@@ -1,0 +1,323 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  DANISAN
+  UZMAN
+  ADMIN
+}
+
+enum ApprovalStatus {
+  TASLAK
+  ONAY_BEKLIYOR
+  YAYINDA
+  REDDEDILDI
+  REVIZE_GONDERILDI
+}
+
+enum ContactSubject {
+  SORU_SORUN
+  RANDEVU_OLUSTURUN
+  ONERI
+  SIKAYET
+  DIGER
+}
+
+enum SssPage {
+  GENEL
+  TESTLER
+  PAKETLER
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  DANGER_PANIC
+}
+
+enum QuestionStatus {
+  ONAY_BEKLIYOR
+  ATANDI
+  CEVAPLANDI
+}
+
+enum RequestStatus {
+  BEKLEMEDE
+  UZMANA_YONLENDIRILDI
+  TAMAMLANDI
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  firstName            String
+  lastName             String
+  email                String    @unique
+  phone                String
+  passwordHash         String
+  role                 Role      @default(DANISAN)
+  isActive             Boolean   @default(true)
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  expertProfile  ExpertProfile?
+  favorites      Favorite[]
+  testResults    TestResult[]
+  comments       Comment[]
+  tokens         RefreshToken[]
+  forumQuestions ForumQuestion[]
+  expertRequests ExpertRequest[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model ExpertProfile {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title          String
+  avatarUrl      String         @default("")
+  bio            String         @default("")
+  education      String         @default("") @db.Text
+  certificateUrl String
+  cvUrl          String
+  priorityScore  Int            @default(1)
+  rating         Float          @default(5.0)
+  status         ApprovalStatus @default(TASLAK)
+  adminNote      String?
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  tags           Tag[]
+  blogs          Blog[]
+  availabilities Availability[]
+  favorites      Favorite[]
+  forumQuestions ForumQuestion[]
+  forumAnswers   ForumAnswer[]
+  expertRequests ExpertRequest[]
+  comments       Comment[]
+
+  @@map("expert_profiles")
+}
+
+model Tag {
+  id        String          @id @default(uuid())
+  name      String          @unique
+  isActive  Boolean         @default(true)
+  profiles  ExpertProfile[]
+
+  @@map("tags")
+}
+
+model Availability {
+  id               String        @id @default(uuid())
+  expertProfileId  String
+  expertProfile    ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  dayOfWeek        Int
+  startTime        String
+  endTime          String
+  isBlockedByAdmin Boolean       @default(false)
+
+  @@map("availabilities")
+}
+
+model Favorite {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertProfileId String
+  expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+
+  @@unique([userId, expertProfileId])
+  @@map("favorites")
+}
+
+model ForumQuestion {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertProfileId String?
+  expertProfile   ExpertProfile? @relation(fields: [expertProfileId], references: [id], onDelete: SetNull)
+
+  title           String
+  content         String         @db.Text
+  status          QuestionStatus @default(ONAY_BEKLIYOR)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  answers         ForumAnswer[]
+
+  @@map("forum_questions")
+}
+
+model ForumAnswer {
+  id              String        @id @default(uuid())
+  questionId      String
+  question        ForumQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  expertProfileId String
+  expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+
+  content         String        @db.Text
+  isApproved      Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+
+  @@map("forum_answers")
+}
+
+model ExpertRequest {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertProfileId String
+  expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+
+  message         String        @db.Text
+  status          RequestStatus @default(BEKLEMEDE)
+  createdAt       DateTime      @default(now())
+
+  @@map("expert_requests")
+}
+
+model Test {
+  id          String       @id @default(uuid())
+  title       String
+  slug        String       @unique
+  description String
+  isActive    Boolean      @default(true)
+  results     TestResult[]
+
+  @@map("tests")
+}
+
+model TestResult {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testId       String
+  test         Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  scoreSummary String
+  createdAt    DateTime @default(now())
+
+  @@map("test_results")
+}
+
+model Blog {
+  id              String         @id @default(uuid())
+  expertProfileId String
+  expertProfile   ExpertProfile  @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  title           String
+  slug            String         @unique
+  content         String         @db.Text
+  status          ApprovalStatus @default(TASLAK)
+  adminNote       String?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("blogs")
+}
+
+model Comment {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertProfileId String
+  expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  content         String
+  rating          Int
+  isApproved      Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+
+  @@map("comments")
+}
+
+model Package {
+  id           String   @id @default(uuid())
+  name         String
+  sessionCount Int
+  price        Decimal  @db.Decimal(10, 2)
+  description  String
+  updatedAt    DateTime @updatedAt
+
+  @@map("packages")
+}
+
+model ContactForm {
+  id            String         @id @default(uuid())
+  fullName      String
+  email         String
+  phone         String
+  subject       ContactSubject
+  message       String
+  isCorporate   Boolean        @default(false)
+  companyName   String?
+  employeeCount String?
+  createdAt     DateTime       @default(now())
+
+  @@map("contact_forms")
+}
+
+model Newsletter {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("newsletters")
+}
+
+model Sss {
+  id       String  @id @default(uuid())
+  question String
+  answer   String  @db.Text
+  page     SssPage @default(GENEL)
+  isActive Boolean @default(true)
+  order    Int     @default(0)
+
+  @@map("sss")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType @default(INFO)
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model SystemSetting {
+  id              String   @id @default(uuid())
+  whatsappNumber  String
+  instagramUrl    String
+  standardPrice   Decimal  @db.Decimal(10, 2) @default(1500.00)
+  discountedPrice Decimal  @db.Decimal(10, 2) @default(1000.00)
+  logoUrl         String
+  videoUrl        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("system_settings")
+}
