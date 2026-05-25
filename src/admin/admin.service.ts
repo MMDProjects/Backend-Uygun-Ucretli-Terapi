@@ -46,11 +46,26 @@ export class AdminService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: { user: { select: { firstName: true, lastName: true, email: true } }, tags: true },
+        include: {
+          user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+          tags: true,
+        },
       }),
       this.prisma.expertProfile.count(),
     ]);
     return { data, total, page, limit };
+  }
+
+  async getExpertById(id: string) {
+    const expert = await this.prisma.expertProfile.findUnique({
+      where: { id },
+      include: {
+        user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+        tags: true,
+      },
+    });
+    if (!expert) throw new NotFoundException('Uzman bulunamadı');
+    return expert;
   }
 
   async updateExpertStatus(id: string, dto: UpdateExpertStatusDto) {
@@ -188,5 +203,18 @@ export class AdminService {
 
   async toggleTag(id: string, isActive: boolean) {
     return this.prisma.tag.update({ where: { id }, data: { isActive } });
+  }
+
+  async getContactForms(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.contactForm.findMany({
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.contactForm.count(),
+    ]);
+    return { data, total, page, limit };
   }
 }

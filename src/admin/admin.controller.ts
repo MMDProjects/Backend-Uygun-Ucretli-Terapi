@@ -67,6 +67,11 @@ export class AdminController {
     return this.adminService.getExperts(+page, +limit);
   }
 
+  @Get('experts/:id')
+  getExpertById(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.getExpertById(id);
+  }
+
   @Patch('experts/:id/status')
   updateExpertStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateExpertStatusDto) {
     return this.adminService.updateExpertStatus(id, dto);
@@ -186,6 +191,12 @@ export class AdminController {
   @Delete('sss/:id')
   deleteSss(@Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.deleteSss(id);
+  }
+
+  // İletişim formu
+  @Get('contact-forms')
+  getContactForms(@Query('page') page = '1', @Query('limit') limit = '20') {
+    return this.adminService.getContactForms(+page, +limit);
   }
 
   // Bildirim gönder

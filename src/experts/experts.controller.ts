@@ -50,6 +50,13 @@ export class ExpertsController {
   }
 
   @Public()
+  @Get('tags')
+  @ApiOperation({ summary: 'Aktif etiket listesi (public)' })
+  getTags() {
+    return this.expertsService.getTags();
+  }
+
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Uzman detayı', description: 'Sadece YAYINDA durumundaki uzmanı döner.' })
   @ApiParam({ name: 'id', description: 'Uzman profil UUID' })

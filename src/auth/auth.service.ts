@@ -42,7 +42,10 @@ export class AuthService {
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.role);
+    return this.generateTokens(user.id, user.email, user.role, {
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
   }
 
   async registerUzman(
@@ -78,7 +81,10 @@ export class AuthService {
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.role);
+    return this.generateTokens(user.id, user.email, user.role, {
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
   }
 
   async login(dto: LoginDto) {
@@ -88,7 +94,10 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Geçersiz kimlik bilgileri');
 
-    return this.generateTokens(user.id, user.email, user.role);
+    return this.generateTokens(user.id, user.email, user.role, {
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
   }
 
   async refresh(userId: string, oldRefreshToken: string) {
@@ -97,7 +106,10 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
 
-    return this.generateTokens(user.id, user.email, user.role);
+    return this.generateTokens(user.id, user.email, user.role, {
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
   }
 
   async logout(refreshToken: string) {
@@ -143,7 +155,12 @@ export class AuthService {
     return { message: 'Şifre başarıyla güncellendi' };
   }
 
-  private async generateTokens(userId: string, email: string, role: string) {
+  private async generateTokens(
+    userId: string,
+    email: string,
+    role: string,
+    userMeta?: { firstName: string; lastName: string },
+  ) {
     const payload = { sub: userId, email, role };
 
     const accessToken = this.jwt.sign(payload, {
@@ -163,6 +180,16 @@ export class AuthService {
       data: { token: refreshToken, userId, expiresAt },
     });
 
-    return { accessToken, refreshToken };
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: userId,
+        email,
+        role,
+        firstName: userMeta?.firstName ?? '',
+        lastName: userMeta?.lastName ?? '',
+      },
+    };
   }
 }

@@ -176,4 +176,8 @@ export class ExpertsService {
       },
     });
   }
+
+  async getTags() {
+    return this.prisma.tag.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } });
+  }
 }

@@ -17,6 +17,7 @@ import { NewsletterModule } from './newsletter/newsletter.module';
 import { BlogsModule } from './blogs/blogs.module';
 import { SssModule } from './sss/sss.module';
 import { ContactModule } from './contact/contact.module';
+import { PackagesModule } from './packages/packages.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -39,6 +40,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     BlogsModule,
     SssModule,
     ContactModule,
+    PackagesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
