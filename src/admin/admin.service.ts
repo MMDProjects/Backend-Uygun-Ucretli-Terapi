@@ -205,6 +205,41 @@ export class AdminService {
     return this.prisma.tag.update({ where: { id }, data: { isActive } });
   }
 
+  async getUsers(page: number, limit: number, search?: string) {
+    const skip = (page - 1) * limit;
+    const where = search
+      ? {
+          role: 'DANISAN' as const,
+          OR: [
+            { firstName: { contains: search, mode: 'insensitive' as const } },
+            { lastName: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : { role: 'DANISAN' as const };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          isActive: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
+  }
+
   async getContactForms(page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const [data, total] = await this.prisma.$transaction([

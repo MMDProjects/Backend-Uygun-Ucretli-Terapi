@@ -150,6 +150,14 @@ export class ExpertsController {
     return this.expertsService.getExpertAvailabilities(id);
   }
 
+  @Public()
+  @Get(':id/blogs')
+  @ApiOperation({ summary: 'Uzmanın yayındaki blog yazıları' })
+  @ApiParam({ name: 'id', description: 'Uzman profil UUID' })
+  getExpertBlogs(@Param('id', ParseUUIDPipe) id: string) {
+    return this.expertsService.getExpertBlogs(id);
+  }
+
   @Roles('DANISAN')
   @Post(':id/favorites')
   @ApiBearerAuth('access-token')
@@ -174,5 +182,13 @@ export class ExpertsController {
   @ApiOperation({ summary: 'Favorilerim' })
   getMyFavorites(@CurrentUser() user: User) {
     return this.expertsService.getMyFavorites(user.id);
+  }
+
+  @Roles('DANISAN')
+  @Get('me/sent-requests')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Gönderdiğim talepler', description: 'Giriş yapan danışanın uzmanlara gönderdiği taleplerin listesi.' })
+  getMySentRequests(@CurrentUser() user: User) {
+    return this.expertsService.getMySentRequests(user.id);
   }
 }

@@ -16,6 +16,7 @@ import { RegisterUzmanDto } from './dto/register-uzman.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateMeDto } from './dto/update-me.dto';
 
 @Injectable()
 export class AuthService {
@@ -153,6 +154,22 @@ export class AuthService {
     });
 
     return { message: 'Şifre başarıyla güncellendi' };
+  }
+
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı');
+    const { passwordHash, passwordResetToken, passwordResetExpires, ...safe } = user;
+    return safe;
+  }
+
+  async updateMe(userId: string, dto: UpdateMeDto) {
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: dto,
+    });
+    const { passwordHash, passwordResetToken, passwordResetExpires, ...safe } = updated;
+    return safe;
   }
 
   private async generateTokens(

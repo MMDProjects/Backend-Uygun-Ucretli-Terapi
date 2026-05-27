@@ -1,6 +1,8 @@
 import {
   Controller,
+  Get,
   Post,
+  Patch,
   Body,
   UseInterceptors,
   UploadedFiles,
@@ -26,6 +28,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateMeDto } from './dto/update-me.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -126,6 +129,20 @@ export class AuthController {
   @ApiResponse({ status: 200, schema: { example: { message: 'Çıkış yapıldı' } } })
   logout(@Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto.refreshToken);
+  }
+
+  @Get('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Giriş yapmış kullanıcıyı getir' })
+  getMe(@CurrentUser() user: { id: string }) {
+    return this.authService.getMe(user.id);
+  }
+
+  @Patch('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Profil güncelle (ad, soyad, telefon)' })
+  updateMe(@CurrentUser() user: { id: string }, @Body() dto: UpdateMeDto) {
+    return this.authService.updateMe(user.id, dto);
   }
 
   @Public()

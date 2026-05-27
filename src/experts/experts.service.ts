@@ -58,6 +58,8 @@ export class ExpertsService {
         id: true,
         title: true,
         avatarUrl: true,
+        cvUrl: true,
+        certificateUrl: true,
         bio: true,
         education: true,
         rating: true,
@@ -177,7 +179,37 @@ export class ExpertsService {
     });
   }
 
+  async getMySentRequests(userId: string) {
+    return this.prisma.expertRequest.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        expertProfile: {
+          select: {
+            id: true,
+            title: true,
+            avatarUrl: true,
+            user: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+    });
+  }
+
   async getTags() {
     return this.prisma.tag.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } });
+  }
+
+  async getExpertBlogs(expertProfileId: string) {
+    const profile = await this.prisma.expertProfile.findFirst({
+      where: { id: expertProfileId, status: 'YAYINDA' },
+    });
+    if (!profile) throw new NotFoundException('Uzman bulunamadı');
+
+    return this.prisma.blog.findMany({
+      where: { expertProfileId, status: 'YAYINDA' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, slug: true, title: true, content: true, createdAt: true },
+    });
   }
 }

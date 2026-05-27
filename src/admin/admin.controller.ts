@@ -199,6 +199,12 @@ export class AdminController {
     return this.adminService.getContactForms(+page, +limit);
   }
 
+  // Danışan listesi
+  @Get('users')
+  getUsers(@Query('page') page = '1', @Query('limit') limit = '20', @Query('search') search?: string) {
+    return this.adminService.getUsers(+page, +limit, search);
+  }
+
   // Bildirim gönder
   @Post('notifications')
   sendNotification(@Body() dto: SendNotificationDto) {
