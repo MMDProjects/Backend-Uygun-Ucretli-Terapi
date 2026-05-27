@@ -14,4 +14,16 @@ export class PackagesController {
   findAll() {
     return this.prisma.package.findMany({ orderBy: { sessionCount: 'asc' } });
   }
+
+  @Get('pricing')
+  @ApiOperation({ summary: 'Platform fiyat bilgisi (public)', description: 'Duyuru bandı ve uzman kartı için standardPrice + discountedPrice.' })
+  async getPricing() {
+    const settings = await this.prisma.systemSetting.findFirst({
+      select: { standardPrice: true, discountedPrice: true },
+    });
+    return {
+      standardPrice: settings ? Number(settings.standardPrice) : 1500,
+      discountedPrice: settings ? Number(settings.discountedPrice) : 1000,
+    };
+  }
 }
