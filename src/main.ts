@@ -91,8 +91,8 @@ export default async function handler(req: any, res: any) {
   return expressApp(req, res);
 }
 
-// Local development
-if (process.env.NODE_ENV !== 'production' && require.main === module) {
+// Start server
+if (require.main === module) {
   createApp().then(async (app) => {
     const port = process.env.PORT || 4000;
     await app.listen(port);
