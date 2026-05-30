@@ -27,7 +27,8 @@ jobs:
             fi
 
             cd "$REPO_DIR"
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             # .env dosyası sunucuda kalıcı olarak tutulur, üzerine yazılmaz
             docker compose up --build -d
