@@ -30,6 +30,6 @@ jobs:
             git pull origin main
 
             # .env dosyası sunucuda kalıcı olarak tutulur, üzerine yazılmaz
-            sudo docker compose up --build -d
+            docker compose up --build -d
 
             echo "Backend deploy tamamlandi"
