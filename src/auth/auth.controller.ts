@@ -11,6 +11,7 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { mkdirSync } from 'fs';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -81,6 +82,7 @@ export class AuthController {
             const dest = file.fieldname === 'certificate'
               ? './uploads/certificates'
               : './uploads/cvs';
+            mkdirSync(dest, { recursive: true });
             cb(null, dest);
           },
           filename: (req, file, cb) => {
