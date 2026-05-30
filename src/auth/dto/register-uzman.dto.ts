@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsString, MinLength, IsBoolean, Equals, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class RegisterUzmanDto {
   @ApiProperty({ example: 'Dr. Ayşe', description: 'Ad' })
@@ -28,6 +29,7 @@ export class RegisterUzmanDto {
   title: string;
 
   @ApiProperty({ example: true, description: 'KVKK onayı zorunludur' })
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
   @IsBoolean()
   @Equals(true, { message: 'KVKK onayı zorunludur' })
   kvkkConsent: boolean;
