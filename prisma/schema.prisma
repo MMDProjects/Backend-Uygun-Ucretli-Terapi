@@ -315,15 +315,16 @@ model Notification {
 }
 
 model SystemSetting {
-  id              String   @id @default(uuid())
-  whatsappNumber  String
-  instagramUrl    String
-  standardPrice   Decimal  @db.Decimal(10, 2) @default(1500.00)
-  discountedPrice Decimal  @db.Decimal(10, 2) @default(1000.00)
-  logoUrl         String
-  videoUrl        String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                String   @id @default(uuid())
+  whatsappNumber    String
+  instagramUrl      String
+  standardPrice     Decimal  @db.Decimal(10, 2) @default(1500.00)
+  discountedPrice   Decimal  @db.Decimal(10, 2) @default(1000.00)
+  logoUrl           String
+  videoUrl          String?
+  announcementItems Json     @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@map("system_settings")
 }

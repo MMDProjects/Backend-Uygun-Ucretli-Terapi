@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsPositive } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsPositive, IsArray } from 'class-validator';
 
 export class UpdateSystemSettingsDto {
   @IsOptional()
@@ -26,4 +26,8 @@ export class UpdateSystemSettingsDto {
   @IsOptional()
   @IsString()
   videoUrl?: string;
+
+  @IsOptional()
+  @IsArray()
+  announcementItems?: string[];
 }
