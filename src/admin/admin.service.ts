@@ -47,7 +47,7 @@ export class AdminService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+          user: { select: { firstName: true, lastName: true, email: true, phone: true, isActive: true } },
           tags: true,
         },
       }),
@@ -76,14 +76,52 @@ export class AdminService {
     const expert = await this.prisma.expertProfile.findUnique({ where: { id } });
     if (!expert) throw new NotFoundException('Profil bulunamadı');
 
-    return this.prisma.expertProfile.update({
-      where: { id },
-      data: { status: dto.status, adminNote: dto.adminNote ?? null },
-    });
+    const data: Record<string, unknown> = {
+      status: dto.status,
+      adminNote: dto.adminNote ?? null,
+    };
+
+    if (dto.status === 'YAYINDA') {
+      data.isPublished = true;
+      // Bekleyen içerikleri ana alanlara taşı
+      if (expert.pendingBio) { data.bio = expert.pendingBio; data.pendingBio = null; }
+      if (expert.pendingCertificateUrl) { data.certificateUrl = expert.pendingCertificateUrl; data.pendingCertificateUrl = null; }
+      if (expert.pendingCvUrl) { data.cvUrl = expert.pendingCvUrl; data.pendingCvUrl = null; }
+    }
+
+    if (dto.status === 'REDDEDILDI') {
+      // Reddedilen bekleyen içerikleri temizle — yayındaki mevcut içerik korunur
+      data.pendingBio = null;
+      data.pendingCertificateUrl = null;
+      data.pendingCvUrl = null;
+    }
+
+    return this.prisma.expertProfile.update({ where: { id }, data });
   }
 
   async updateExpertPriority(id: string, priorityScore: number) {
     return this.prisma.expertProfile.update({ where: { id }, data: { priorityScore } });
+  }
+
+  async toggleExpertActive(id: string, isActive: boolean) {
+    const expert = await this.prisma.expertProfile.findUnique({
+      where: { id },
+      select: { userId: true },
+    });
+    if (!expert) throw new NotFoundException('Uzman bulunamadı');
+    return this.prisma.user.update({
+      where: { id: expert.userId },
+      data: { isActive },
+    });
+  }
+
+  async toggleExpertPublish(id: string, isPublished: boolean) {
+    const expert = await this.prisma.expertProfile.findUnique({ where: { id } });
+    if (!expert) throw new NotFoundException('Profil bulunamadı');
+    if (isPublished && expert.status !== 'YAYINDA') {
+      throw new BadRequestException('Yalnızca YAYINDA statüsündeki uzmanlar yayına alınabilir');
+    }
+    return this.prisma.expertProfile.update({ where: { id }, data: { isPublished } });
   }
 
   async getBlogs(page = 1, limit = 20) {

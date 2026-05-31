@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { UpdateExpertStatusDto } from './dto/update-expert-status.dto';
+import { TogglePublishDto } from './dto/toggle-publish.dto';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { UpsertSssDto } from './dto/upsert-sss.dto';
@@ -99,6 +100,21 @@ export class AdminController {
   @Patch('experts/:id/priority')
   updateExpertPriority(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PriorityDto) {
     return this.adminService.updateExpertPriority(id, dto.priorityScore);
+  }
+
+  @Patch('experts/:id/publish')
+  @ApiOperation({ summary: 'Uzmanı yayına al / yayından kaldır' })
+  toggleExpertPublish(@Param('id', ParseUUIDPipe) id: string, @Body() dto: TogglePublishDto) {
+    return this.adminService.toggleExpertPublish(id, dto.isPublished);
+  }
+
+  @Patch('experts/:id/active')
+  @ApiOperation({ summary: 'Uzman hesabını aktif / pasif yap' })
+  toggleExpertActive(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { isActive: boolean },
+  ) {
+    return this.adminService.toggleExpertActive(id, dto.isActive);
   }
 
   @Get('experts/:id/availabilities')
