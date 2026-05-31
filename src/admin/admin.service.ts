@@ -100,6 +100,12 @@ export class AdminService {
     return { data, total, page, limit };
   }
 
+  async updateBlogContent(id: string, dto: { title?: string; slug?: string; content?: string }) {
+    const blog = await this.prisma.blog.findUnique({ where: { id } });
+    if (!blog) throw new NotFoundException('Blog bulunamadı');
+    return this.prisma.blog.update({ where: { id }, data: dto });
+  }
+
   async updateBlogStatus(id: string, status: ApprovalStatus, adminNote?: string) {
     if (status === 'REDDEDILDI' && !adminNote) {
       throw new BadRequestException('Red durumunda açıklama zorunludur');

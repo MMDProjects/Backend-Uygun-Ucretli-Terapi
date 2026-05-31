@@ -20,7 +20,7 @@ import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AssignQuestionDto } from '../forum/dto/assign-question.dto';
 import { RequestStatus, ApprovalStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 class UpdateBlogStatusDto {
   @IsEnum(ApprovalStatus)
@@ -29,6 +29,22 @@ class UpdateBlogStatusDto {
   @IsOptional()
   @IsString()
   adminNote?: string;
+}
+
+class UpdateBlogContentDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  slug?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(100)
+  content?: string;
 }
 
 class UpdateRequestStatusDto {
@@ -107,6 +123,14 @@ export class AdminController {
     @Body() dto: UpdateBlogStatusDto,
   ) {
     return this.adminService.updateBlogStatus(id, dto.status, dto.adminNote);
+  }
+
+  @Patch('blogs/:id/content')
+  updateBlogContent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateBlogContentDto,
+  ) {
+    return this.adminService.updateBlogContent(id, dto);
   }
 
   // Forum yönetimi
