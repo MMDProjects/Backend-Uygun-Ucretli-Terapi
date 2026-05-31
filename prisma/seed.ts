@@ -48,18 +48,17 @@ async function main() {
 
   // 5 sabit paket
   const packages = [
-    { name: 'Başlangıç Paketi', sessionCount: 1, price: 800, description: 'Tek seferlik keşif seansı. Terapiste ilk adımı atmak isteyenler için idealdir.' },
-    { name: 'Temel Paket', sessionCount: 4, price: 2800, description: '4 seanslık temel destek paketi. Belirli bir konuyu kısa sürede ele almak için uygundur.' },
-    { name: 'Standart Paket', sessionCount: 8, price: 5200, description: '8 seanslık kapsamlı terapi paketi. Süregelen sorunlar için önerilen paket.' },
-    { name: 'Yoğun Paket', sessionCount: 12, price: 7200, description: '12 seanslık yoğun terapi süreci. Derinlemesine çalışma gerektiren durumlar için.' },
-    { name: 'Premium Paket', sessionCount: 20, price: 11000, description: '20 seanslık uzun vadeli terapi programı. Kalıcı değişim hedefleyenler için.' },
+    { name: 'Bireysel', sessionCount: 1, price: 800, description: 'Bireysel terapi seansı. Terapiste ilk adımı atmak isteyenler için idealdir.' },
+    { name: 'Çift', sessionCount: 1, price: 1200, description: 'Çift terapisi seansı. İlişki sorunlarını birlikte ele almak için.' },
+    { name: 'Aile', sessionCount: 1, price: 1500, description: 'Aile terapisi seansı. Aile dinamiklerini güçlendirmek için.' },
+    { name: '5\'li Paket', sessionCount: 5, price: 3500, description: '5 seanslık bireysel terapi paketi. Düzenli destek için idealdir.' },
+    { name: '10\'lu Paket', sessionCount: 10, price: 6500, description: '10 seanslık bireysel terapi paketi. Uzun vadeli gelişim için önerilen paket.' },
   ];
 
+  // Mevcut tüm paketleri sil ve yeniden oluştur
+  await prisma.package.deleteMany();
   for (const pkg of packages) {
-    const existing = await prisma.package.findFirst({ where: { name: pkg.name } });
-    if (!existing) {
-      await prisma.package.create({ data: pkg });
-    }
+    await prisma.package.create({ data: pkg });
   }
 
   // Sistem ayarları
