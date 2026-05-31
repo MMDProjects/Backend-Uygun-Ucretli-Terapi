@@ -60,7 +60,7 @@ export class AdminService {
     const expert = await this.prisma.expertProfile.findUnique({
       where: { id },
       include: {
-        user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+        user: { select: { firstName: true, lastName: true, email: true, phone: true, isActive: true } },
         tags: true,
       },
     });
