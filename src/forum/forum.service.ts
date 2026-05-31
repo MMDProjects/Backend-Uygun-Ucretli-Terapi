@@ -17,9 +17,11 @@ export class ForumService {
 
   async findAllPublic(page = 1, limit = 10) {
     const skip = (page - 1) * limit;
+    // Sadece en az 1 onaylı cevabı olan sorular public listede görünür
+    const where = { status: 'CEVAPLANDI' as const, answers: { some: { isApproved: true } } };
     const [data, total] = await this.prisma.$transaction([
       this.prisma.forumQuestion.findMany({
-        where: { status: 'CEVAPLANDI' },
+        where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -27,7 +29,7 @@ export class ForumService {
           answers: { where: { isApproved: true }, select: { content: true, createdAt: true, expertProfile: { select: { title: true, user: { select: { firstName: true, lastName: true } } } } } },
         },
       }),
-      this.prisma.forumQuestion.count({ where: { status: 'CEVAPLANDI' } }),
+      this.prisma.forumQuestion.count({ where }),
     ]);
     return { data, total, page, limit };
   }

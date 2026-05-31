@@ -154,7 +154,14 @@ export class AdminService {
     return this.prisma.forumQuestion.findMany({
       where: status ? { status: status as any } : {},
       orderBy: { createdAt: 'desc' },
-      include: { user: { select: { firstName: true, lastName: true } }, expertProfile: true },
+      include: {
+        user: { select: { firstName: true, lastName: true, email: true } },
+        expertProfile: { include: { user: { select: { firstName: true, lastName: true } } } },
+        answers: {
+          include: { expertProfile: { include: { user: { select: { firstName: true, lastName: true } } } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
   }
 
