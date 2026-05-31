@@ -66,7 +66,7 @@ export class StorageService implements OnModuleInit {
   }
 
   async upload(
-    folder: 'avatars' | 'certificates' | 'cvs',
+    folder: 'avatars' | 'certificates' | 'cvs' | 'blog-covers',
     file: Express.Multer.File,
     userId: string,
   ): Promise<string> {

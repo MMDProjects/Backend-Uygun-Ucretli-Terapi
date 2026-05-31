@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, ParseUUIDPipe, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
@@ -63,5 +64,19 @@ export class BlogsController {
   @ApiParam({ name: 'id', description: 'Blog UUID' })
   delete(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.blogsService.delete(user, id);
+  }
+
+  @Roles('UZMAN')
+  @Post(':id/cover')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Blog kapak fotoğrafı yükle' })
+  @ApiParam({ name: 'id', description: 'Blog UUID' })
+  @UseInterceptors(FileInterceptor('cover', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  uploadCover(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.blogsService.uploadCover(user, id, file);
   }
 }

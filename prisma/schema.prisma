@@ -234,6 +234,7 @@ model Blog {
   title           String
   slug            String         @unique
   content         String         @db.Text
+  coverImageUrl   String?
   status          ApprovalStatus @default(TASLAK)
   adminNote       String?
 

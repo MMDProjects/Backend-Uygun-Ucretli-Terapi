@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { User } from '@prisma/client';
 
 @Injectable()
 export class BlogsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private storage: StorageService,
+  ) {}
 
   async findAllPublic(page = 1, limit = 10) {
     const skip = (page - 1) * limit;
@@ -15,7 +19,7 @@ export class BlogsService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        select: { id: true, title: true, slug: true, content: true, createdAt: true, expertProfile: { select: { title: true, user: { select: { firstName: true, lastName: true } } } } },
+        select: { id: true, title: true, slug: true, content: true, coverImageUrl: true, createdAt: true, expertProfile: { select: { title: true, user: { select: { firstName: true, lastName: true } } } } },
       }),
       this.prisma.blog.count({ where: { status: 'YAYINDA' } }),
     ]);
@@ -66,5 +70,19 @@ export class BlogsService {
     const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
     return this.prisma.blog.findMany({ where: { expertProfileId: profile.id }, orderBy: { createdAt: 'desc' } });
+  }
+
+  async uploadCover(user: User, id: string, file: Express.Multer.File): Promise<{ coverImageUrl: string }> {
+    const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
+    if (!blog) throw new NotFoundException('Blog bulunamadı');
+    if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
+
+    if (blog.coverImageUrl) {
+      await this.storage.deleteByUrl(blog.coverImageUrl);
+    }
+
+    const url = await this.storage.upload('blog-covers', file, user.id);
+    await this.prisma.blog.update({ where: { id }, data: { coverImageUrl: url } });
+    return { coverImageUrl: url };
   }
 }
