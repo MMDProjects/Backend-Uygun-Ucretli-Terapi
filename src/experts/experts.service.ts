@@ -5,15 +5,18 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { FilterExpertsDto } from './dto/filter-experts.dto';
 import { User } from '@prisma/client';
-import { extname } from 'path';
 
 @Injectable()
 export class ExpertsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private storage: StorageService,
+  ) {}
 
   async findAll(filter: FilterExpertsDto) {
     const { tags, page = 1, limit = 10 } = filter;
@@ -89,7 +92,7 @@ export class ExpertsService {
 
     // Direkt güncellenen alanlar (admin onayı gerekmez): avatar, education, title, tags
     const directUpdate: Record<string, unknown> = {};
-    if (avatarFile) directUpdate.avatarUrl = `/uploads/avatars/${avatarFile.filename}`;
+    if (avatarFile) directUpdate.avatarUrl = await this.storage.upload('avatars', avatarFile, user.id);
     if (dto.education !== undefined) directUpdate.education = dto.education;
     if (dto.title !== undefined) directUpdate.title = dto.title;
     if (dto.tagIds) directUpdate.tags = { set: dto.tagIds.map((id) => ({ id })) };
@@ -98,8 +101,8 @@ export class ExpertsService {
     // Mevcut yayındaki içerik (bio, certificateUrl, cvUrl) korunur — isPublished değişmez
     const reviewUpdate: Record<string, unknown> = {};
     if (dto.bio !== undefined) reviewUpdate.pendingBio = dto.bio;
-    if (certificateFile) reviewUpdate.pendingCertificateUrl = `/uploads/certificates/${certificateFile.filename}`;
-    if (cvFile) reviewUpdate.pendingCvUrl = `/uploads/cvs/${cvFile.filename}`;
+    if (certificateFile) reviewUpdate.pendingCertificateUrl = await this.storage.upload('certificates', certificateFile, user.id);
+    if (cvFile) reviewUpdate.pendingCvUrl = await this.storage.upload('cvs', cvFile, user.id);
 
     const needsReview = Object.keys(reviewUpdate).length > 0;
 

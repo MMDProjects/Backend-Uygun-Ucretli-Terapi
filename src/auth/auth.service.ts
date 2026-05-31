@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { StorageService } from '../storage/storage.service';
 import { RegisterDanisanDto } from './dto/register-danisan.dto';
 import { RegisterUzmanDto } from './dto/register-uzman.dto';
 import { LoginDto } from './dto/login.dto';
@@ -25,6 +26,7 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
     private mail: MailService,
+    private storage: StorageService,
   ) {}
 
   async registerDanisan(dto: RegisterDanisanDto) {
@@ -60,8 +62,9 @@ export class AuthService {
     if (exists) throw new ConflictException('Bu e-posta zaten kayıtlı');
 
     const hash = await bcrypt.hash(dto.password, 12);
-    const certificateUrl = `/uploads/certificates/${files.certificate[0].filename}`;
-    const cvUrl = `/uploads/cvs/${files.cv[0].filename}`;
+    const tempId = `reg-${Date.now()}`;
+    const certificateUrl = await this.storage.upload('certificates', files.certificate[0], tempId);
+    const cvUrl = await this.storage.upload('cvs', files.cv[0], tempId);
 
     const user = await this.prisma.user.create({
       data: {
