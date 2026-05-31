@@ -75,6 +75,25 @@ export class ForumService {
     });
   }
 
+  async getAssignedQuestionById(userId: string, questionId: string) {
+    const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
+    if (!profile) throw new ForbiddenException('Uzman profili bulunamadı');
+
+    const q = await this.prisma.forumQuestion.findFirst({
+      where: { id: questionId, expertProfileId: profile.id },
+      include: {
+        answers: {
+          include: {
+            expertProfile: { include: { user: { select: { firstName: true, lastName: true } } } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!q) throw new NotFoundException('Soru bulunamadı veya size atanmamış');
+    return q;
+  }
+
   async createAnswer(userId: string, questionId: string, dto: CreateAnswerDto) {
     const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
     if (!profile) throw new ForbiddenException('Uzman profili bulunamadı');

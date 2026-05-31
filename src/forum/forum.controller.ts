@@ -49,6 +49,19 @@ export class ForumController {
   }
 
   @Roles('UZMAN')
+  @Get('me/questions/:id')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Atanan soru detayı', description: 'Uzmana atanmış tek bir sorunun detayı ve cevapları.' })
+  @ApiParam({ name: 'id', description: 'Soru UUID' })
+  @ApiResponse({ status: 404, description: 'Soru bulunamadı veya size atanmamış' })
+  getAssignedQuestionById(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.forumService.getAssignedQuestionById(user.id, id);
+  }
+
+  @Roles('UZMAN')
   @Post('questions/:id/answers')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Soruyu cevapla', description: 'Sadece kendisine atanmış soruları cevaplayabilir. Cevap admin onayına gider.' })
