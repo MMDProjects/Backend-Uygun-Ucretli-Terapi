@@ -76,7 +76,7 @@ export class AuthService {
             title: dto.title,
             certificateUrl,
             cvUrl,
-            status: 'TASLAK',
+            status: 'ONAY_BEKLIYOR',
           },
         },
       },
