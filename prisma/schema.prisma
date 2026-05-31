@@ -97,13 +97,17 @@ model ExpertProfile {
 
   title          String
   avatarUrl      String         @default("")
-  bio            String         @default("")
-  education      String         @default("") @db.Text
-  certificateUrl String
-  cvUrl          String
+  bio                   String         @default("")
+  pendingBio            String?
+  education             String         @default("") @db.Text
+  certificateUrl        String
+  cvUrl                 String
+  pendingCertificateUrl String?
+  pendingCvUrl          String?
   priorityScore  Int            @default(1)
   rating         Float          @default(5.0)
   status         ApprovalStatus @default(TASLAK)
+  isPublished    Boolean        @default(false)
   adminNote      String?
 
   createdAt      DateTime       @default(now())

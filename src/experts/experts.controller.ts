@@ -9,9 +9,11 @@ import {
   Query,
   UseInterceptors,
   UploadedFile,
+  UploadedFiles,
   ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import {
@@ -77,43 +79,69 @@ export class ExpertsController {
   @Roles('UZMAN')
   @Patch('me')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Profil güncelle', description: 'Güncelleme sonrası profil ONAY_BEKLIYOR statüsüne düşer. Bio 80-150 kelime arası zorunlu.' })
+  @ApiOperation({
+    summary: 'Profil güncelle',
+    description: 'Avatar/eğitim/unvan değişikliği direkt yansır. Bio, sertifika ve CV değişikliği admin onayına gider ve profil yayından kaldırılır.',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
         title: { type: 'string', example: 'Uzman Klinik Psikolog' },
-        bio: { type: 'string', example: '80-150 kelime arası biyografi...' },
+        bio: { type: 'string', example: '80-150 kelime arası biyografi... (admin onayı gerekir)' },
         education: { type: 'string', example: 'Hacettepe Üniversitesi...' },
         tagIds: { type: 'array', items: { type: 'string' }, example: ['uuid-1', 'uuid-2'] },
         avatar: { type: 'string', format: 'binary', description: 'Profil fotoğrafı (max 5MB)' },
+        certificate: { type: 'string', format: 'binary', description: 'Sertifika PDF (max 10MB, admin onayı gerekir)' },
+        cv: { type: 'string', format: 'binary', description: 'CV PDF (max 10MB, admin onayı gerekir)' },
       },
     },
   })
-  @ApiResponse({ status: 200, schema: { example: { message: 'Profil güncellendi, admin onayı bekleniyor' } } })
   @UseInterceptors(
-    FileInterceptor('avatar', {
-      storage: diskStorage({
-        destination: './uploads/avatars',
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, unique + extname(file.originalname));
+    FileFieldsInterceptor(
+      [
+        { name: 'avatar', maxCount: 1 },
+        { name: 'certificate', maxCount: 1 },
+        { name: 'cv', maxCount: 1 },
+      ],
+      {
+        storage: diskStorage({
+          destination: (req, file, cb) => {
+            const dest =
+              file.fieldname === 'avatar'
+                ? './uploads/avatars'
+                : file.fieldname === 'certificate'
+                  ? './uploads/certificates'
+                  : './uploads/cvs';
+            cb(null, dest);
+          },
+          filename: (req, file, cb) => {
+            const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+            cb(null, unique + extname(file.originalname));
+          },
+        }),
+        fileFilter: (req, file, cb) => {
+          if (file.fieldname === 'avatar' && file.mimetype.startsWith('image/')) return cb(null, true);
+          if ((file.fieldname === 'certificate' || file.fieldname === 'cv') && file.mimetype === 'application/pdf') return cb(null, true);
+          cb(new BadRequestException('Geçersiz dosya türü'), false);
         },
-      }),
-      fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/')) cb(null, true);
-        else cb(new Error('Sadece görsel dosyası yüklenebilir'), false);
+        limits: { fileSize: 10 * 1024 * 1024 },
       },
-      limits: { fileSize: 5 * 1024 * 1024 },
-    }),
+    ),
   )
   updateMyProfile(
     @CurrentUser() user: User,
     @Body() dto: UpdateProfileDto,
-    @UploadedFile() avatar?: Express.Multer.File,
+    @UploadedFiles() files?: { avatar?: Express.Multer.File[]; certificate?: Express.Multer.File[]; cv?: Express.Multer.File[] },
   ) {
-    return this.expertsService.updateMyProfile(user, dto, avatar);
+    return this.expertsService.updateMyProfile(
+      user,
+      dto,
+      files?.avatar?.[0],
+      files?.certificate?.[0],
+      files?.cv?.[0],
+    );
   }
 
   @Roles('UZMAN')

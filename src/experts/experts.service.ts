@@ -23,6 +23,7 @@ export class ExpertsService {
 
     const where = {
       status: 'YAYINDA' as const,
+      isPublished: true,
       ...(tagIds.length > 0 && {
         tags: { some: { id: { in: tagIds } } },
       }),
@@ -53,7 +54,7 @@ export class ExpertsService {
 
   async findOne(id: string) {
     const expert = await this.prisma.expertProfile.findFirst({
-      where: { id, status: 'YAYINDA' },
+      where: { id, status: 'YAYINDA', isPublished: true },
       select: {
         id: true,
         title: true,
@@ -76,31 +77,53 @@ export class ExpertsService {
     return expert;
   }
 
-  async updateMyProfile(user: User, dto: UpdateProfileDto, avatarFile?: Express.Multer.File) {
+  async updateMyProfile(
+    user: User,
+    dto: UpdateProfileDto,
+    avatarFile?: Express.Multer.File,
+    certificateFile?: Express.Multer.File,
+    cvFile?: Express.Multer.File,
+  ) {
     const profile = await this.prisma.expertProfile.findUnique({ where: { userId: user.id } });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
-    const avatarUrl = avatarFile
-      ? `/uploads/avatars/${avatarFile.filename}`
-      : undefined;
+    // Direkt güncellenen alanlar (admin onayı gerekmez): avatar, education, title, tags
+    const directUpdate: Record<string, unknown> = {};
+    if (avatarFile) directUpdate.avatarUrl = `/uploads/avatars/${avatarFile.filename}`;
+    if (dto.education !== undefined) directUpdate.education = dto.education;
+    if (dto.title !== undefined) directUpdate.title = dto.title;
+    if (dto.tagIds) directUpdate.tags = { set: dto.tagIds.map((id) => ({ id })) };
 
-    await this.prisma.expertProfile.update({
-      where: { userId: user.id },
-      data: {
-        ...(dto.title && { title: dto.title }),
-        ...(dto.bio && { bio: dto.bio }),
-        ...(dto.education && { education: dto.education }),
-        ...(avatarUrl && { avatarUrl }),
-        ...(dto.tagIds && {
-          tags: {
-            set: dto.tagIds.map((id) => ({ id })),
-          },
-        }),
-        status: 'ONAY_BEKLIYOR',
-      },
-    });
+    // Admin onayına giden alanlar: pendingBio, pendingCertificateUrl, pendingCvUrl
+    // Mevcut yayındaki içerik (bio, certificateUrl, cvUrl) korunur — isPublished değişmez
+    const reviewUpdate: Record<string, unknown> = {};
+    if (dto.bio !== undefined) reviewUpdate.pendingBio = dto.bio;
+    if (certificateFile) reviewUpdate.pendingCertificateUrl = `/uploads/certificates/${certificateFile.filename}`;
+    if (cvFile) reviewUpdate.pendingCvUrl = `/uploads/cvs/${cvFile.filename}`;
 
-    return { message: 'Profil güncellendi, admin onayı bekleniyor' };
+    const needsReview = Object.keys(reviewUpdate).length > 0;
+
+    if (needsReview) {
+      await this.prisma.expertProfile.update({
+        where: { userId: user.id },
+        data: {
+          ...directUpdate,
+          ...reviewUpdate,
+          status: 'REVIZE_GONDERILDI',
+          // isPublished kasıtlı olarak değiştirilmiyor — yayındaki eski içerik görünmeye devam eder
+        },
+      });
+      return { message: 'Biyografi/belge değişikliği admin onayına gönderildi. Onaylanana kadar mevcut profiliniz yayında kalmaya devam eder.' };
+    }
+
+    if (Object.keys(directUpdate).length > 0) {
+      await this.prisma.expertProfile.update({
+        where: { userId: user.id },
+        data: directUpdate,
+      });
+    }
+
+    return { message: 'Profil güncellendi' };
   }
 
   async getMyProfile(userId: string) {
