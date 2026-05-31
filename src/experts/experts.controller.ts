@@ -14,8 +14,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 import {
   ApiTags,
   ApiOperation,
@@ -106,21 +105,7 @@ export class ExpertsController {
         { name: 'cv', maxCount: 1 },
       ],
       {
-        storage: diskStorage({
-          destination: (req, file, cb) => {
-            const dest =
-              file.fieldname === 'avatar'
-                ? './uploads/avatars'
-                : file.fieldname === 'certificate'
-                  ? './uploads/certificates'
-                  : './uploads/cvs';
-            cb(null, dest);
-          },
-          filename: (req, file, cb) => {
-            const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-            cb(null, unique + extname(file.originalname));
-          },
-        }),
+        storage: memoryStorage(),
         fileFilter: (req, file, cb) => {
           if (file.fieldname === 'avatar' && file.mimetype.startsWith('image/')) return cb(null, true);
           if ((file.fieldname === 'certificate' || file.fieldname === 'cv') && file.mimetype === 'application/pdf') return cb(null, true);

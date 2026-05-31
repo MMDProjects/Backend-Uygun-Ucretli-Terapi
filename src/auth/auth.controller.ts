@@ -9,9 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { mkdirSync } from 'fs';
+import { memoryStorage } from 'multer';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -77,19 +75,7 @@ export class AuthController {
         { name: 'cv', maxCount: 1 },
       ],
       {
-        storage: diskStorage({
-          destination: (req, file, cb) => {
-            const dest = file.fieldname === 'certificate'
-              ? './uploads/certificates'
-              : './uploads/cvs';
-            mkdirSync(dest, { recursive: true });
-            cb(null, dest);
-          },
-          filename: (req, file, cb) => {
-            const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-            cb(null, unique + extname(file.originalname));
-          },
-        }),
+        storage: memoryStorage(),
         fileFilter: (req, file, cb) => {
           if (file.mimetype === 'application/pdf') cb(null, true);
           else cb(new Error('Sadece PDF dosyası yüklenebilir'), false);
