@@ -15,7 +15,7 @@ export class BlogsService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        select: { id: true, title: true, slug: true, createdAt: true, expertProfile: { select: { title: true, user: { select: { firstName: true, lastName: true } } } } },
+        select: { id: true, title: true, slug: true, content: true, createdAt: true, expertProfile: { select: { title: true, user: { select: { firstName: true, lastName: true } } } } },
       }),
       this.prisma.blog.count({ where: { status: 'YAYINDA' } }),
     ]);
