@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CommentsService } from '../comments/comments.service';
 import { ExpertRequestsService } from '../requests/expert-requests.service';
@@ -15,6 +16,7 @@ import { RequestStatus, ApprovalStatus } from '@prisma/client';
 export class AdminService {
   constructor(
     private prisma: PrismaService,
+    private storage: StorageService,
     private notificationsService: NotificationsService,
     private commentsService: CommentsService,
     private expertRequestsService: ExpertRequestsService,
@@ -83,14 +85,25 @@ export class AdminService {
 
     if (dto.status === 'YAYINDA') {
       data.isPublished = true;
-      // Bekleyen içerikleri ana alanlara taşı
       if (expert.pendingBio) { data.bio = expert.pendingBio; data.pendingBio = null; }
-      if (expert.pendingCertificateUrl) { data.certificateUrl = expert.pendingCertificateUrl; data.pendingCertificateUrl = null; }
-      if (expert.pendingCvUrl) { data.cvUrl = expert.pendingCvUrl; data.pendingCvUrl = null; }
+      if (expert.pendingCertificateUrl) {
+        // Eski sertifikayı MinIO'dan sil
+        if (expert.certificateUrl) await this.storage.deleteByUrl(expert.certificateUrl);
+        data.certificateUrl = expert.pendingCertificateUrl;
+        data.pendingCertificateUrl = null;
+      }
+      if (expert.pendingCvUrl) {
+        // Eski CV'yi MinIO'dan sil
+        if (expert.cvUrl) await this.storage.deleteByUrl(expert.cvUrl);
+        data.cvUrl = expert.pendingCvUrl;
+        data.pendingCvUrl = null;
+      }
     }
 
     if (dto.status === 'REDDEDILDI') {
-      // Reddedilen bekleyen içerikleri temizle — yayındaki mevcut içerik korunur
+      // Reddedilen pending dosyaları MinIO'dan sil
+      if (expert.pendingCertificateUrl) await this.storage.deleteByUrl(expert.pendingCertificateUrl);
+      if (expert.pendingCvUrl) await this.storage.deleteByUrl(expert.pendingCvUrl);
       data.pendingBio = null;
       data.pendingCertificateUrl = null;
       data.pendingCvUrl = null;
