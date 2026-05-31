@@ -92,7 +92,10 @@ export class ExpertsService {
 
     // Direkt güncellenen alanlar (admin onayı gerekmez): avatar, education, title, tags
     const directUpdate: Record<string, unknown> = {};
-    if (avatarFile) directUpdate.avatarUrl = await this.storage.upload('avatars', avatarFile, user.id);
+    if (avatarFile) {
+      if (profile.avatarUrl) await this.storage.deleteByUrl(profile.avatarUrl);
+      directUpdate.avatarUrl = await this.storage.upload('avatars', avatarFile, user.id);
+    }
     if (dto.education !== undefined) directUpdate.education = dto.education;
     if (dto.title !== undefined) directUpdate.title = dto.title;
     if (dto.tagIds) directUpdate.tags = { set: dto.tagIds.map((id) => ({ id })) };
