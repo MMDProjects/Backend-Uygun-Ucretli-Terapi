@@ -45,9 +45,11 @@ export class BlogsService {
     if (!blog) throw new NotFoundException('Blog bulunamadı');
     if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
+    const newStatus = blog.status === 'REDDEDILDI' ? 'REVIZE_GONDERILDI' : 'ONAY_BEKLIYOR';
+
     return this.prisma.blog.update({
       where: { id },
-      data: { ...dto, status: 'ONAY_BEKLIYOR' },
+      data: { ...dto, status: newStatus },
     });
   }
 
