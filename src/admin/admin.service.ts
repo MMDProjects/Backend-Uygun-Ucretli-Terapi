@@ -12,6 +12,13 @@ import { UpsertSssDto } from './dto/upsert-sss.dto';
 import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { RequestStatus, ApprovalStatus } from '@prisma/client';
 
+const DEFAULT_ANNOUNCEMENT_ITEMS = [
+  'Admin onaylı, sertifikalı uzman profilleri',
+  'Ücretsiz ön görüşme imkânı — WhatsApp üzerinden hemen başla',
+  'KVKK uyumlu, güvenli ve gizli platformdur',
+  'Her uzman belgelerini danışanlarıyla şeffaf paylaşır',
+];
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -167,13 +174,37 @@ export class AdminService {
   }
 
   async getSettings() {
-    return this.prisma.systemSetting.findFirst();
+    const s = await this.prisma.systemSetting.findFirst();
+    if (s) return s;
+    // Kayıt yoksa varsayılan oluştur
+    return this.prisma.systemSetting.create({
+      data: {
+        whatsappNumber: '+905000000000',
+        instagramUrl: 'https://instagram.com/psikodanismanlik',
+        standardPrice: 1500,
+        discountedPrice: 1000,
+        logoUrl: '/uploads/logo.png',
+        announcementItems: DEFAULT_ANNOUNCEMENT_ITEMS,
+      },
+    });
   }
 
   async updateSettings(dto: UpdateSystemSettingsDto) {
     const setting = await this.prisma.systemSetting.findFirst();
-    if (!setting) throw new NotFoundException('Sistem ayarları bulunamadı');
-    return this.prisma.systemSetting.update({ where: { id: setting.id }, data: dto });
+    if (setting) {
+      return this.prisma.systemSetting.update({ where: { id: setting.id }, data: dto });
+    }
+    // Kayıt yoksa oluştur
+    return this.prisma.systemSetting.create({
+      data: {
+        whatsappNumber: dto.whatsappNumber ?? '+905000000000',
+        instagramUrl: dto.instagramUrl ?? 'https://instagram.com/psikodanismanlik',
+        standardPrice: dto.standardPrice ?? 1500,
+        discountedPrice: dto.discountedPrice ?? 1000,
+        logoUrl: dto.logoUrl ?? '/uploads/logo.png',
+        announcementItems: dto.announcementItems ?? DEFAULT_ANNOUNCEMENT_ITEMS,
+      },
+    });
   }
 
   async getPackages() {

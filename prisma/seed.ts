@@ -72,6 +72,25 @@ async function main() {
         discountedPrice: 1000,
         logoUrl: '/uploads/logo.png',
         videoUrl: null,
+        announcementItems: [
+          'Admin onaylı, sertifikalı uzman profilleri',
+          'Ücretsiz ön görüşme imkânı — WhatsApp üzerinden hemen başla',
+          'KVKK uyumlu, güvenli ve gizli platformdur',
+          'Her uzman belgelerini danışanlarıyla şeffaf paylaşır',
+        ],
+      },
+    });
+  } else {
+    // Mevcut kayıtta announcementItems yoksa varsayılanı yaz
+    await prisma.systemSetting.updateMany({
+      where: { announcementItems: { equals: [] } },
+      data: {
+        announcementItems: [
+          'Admin onaylı, sertifikalı uzman profilleri',
+          'Ücretsiz ön görüşme imkânı — WhatsApp üzerinden hemen başla',
+          'KVKK uyumlu, güvenli ve gizli platformdur',
+          'Her uzman belgelerini danışanlarıyla şeffaf paylaşır',
+        ],
       },
     });
   }
