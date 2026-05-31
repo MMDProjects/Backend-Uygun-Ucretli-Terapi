@@ -20,11 +20,14 @@ import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AssignQuestionDto } from '../forum/dto/assign-question.dto';
 import { RequestStatus, ApprovalStatus } from '@prisma/client';
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 
 class UpdateBlogStatusDto {
   @IsEnum(ApprovalStatus)
   status: ApprovalStatus;
+
+  @IsOptional()
+  @IsString()
   adminNote?: string;
 }
 
