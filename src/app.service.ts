@@ -8,6 +8,15 @@ const DEFAULT_ANNOUNCEMENT_ITEMS = [
   'Her uzman belgelerini danışanlarıyla şeffaf paylaşır',
 ];
 
+const DEFAULT_WHEEL_SEGMENTS = [
+  { label: 'Ön Görüş.', description: 'Ücretsiz ön görüşme hakkı — 20 dk WhatsApp görüşmesi' },
+  { label: '%10 İnd.', description: 'İlk seansta %10 indirim fırsatı' },
+  { label: 'Tekrar!', description: 'Bu sefer olmadı — bir daha dene!' },
+  { label: 'Bedava!', description: 'Ücretsiz ilk seans hakkı kazandın' },
+  { label: '%20 İnd.', description: 'İlk seansta %20 indirim fırsatı' },
+  { label: 'Sürpriz!', description: 'Özel sürpriz ödül — WhatsApp\'tan talep et' },
+];
+
 @Injectable()
 export class AppService {
   constructor(private prisma: PrismaService) {}
@@ -21,7 +30,9 @@ export class AppService {
     const raw = (s?.announcementItems as string[] | null) ?? [];
     const items = raw.length > 0 ? raw : DEFAULT_ANNOUNCEMENT_ITEMS;
 
-    // Mevcut kayıtta boş array varsa DB'yi de güncelle
+    const rawSegments = (s?.wheelSegments as { label: string; description: string }[] | null) ?? [];
+    const segments = rawSegments.length >= 2 ? rawSegments : DEFAULT_WHEEL_SEGMENTS;
+
     if (s && raw.length === 0) {
       await this.prisma.systemSetting.update({
         where: { id: s.id },
@@ -34,6 +45,7 @@ export class AppService {
       discountedPrice: Number(s?.discountedPrice ?? 1000),
       whatsappNumber: s?.whatsappNumber ?? '',
       announcementItems: items,
+      wheelSegments: segments,
     };
   }
 }

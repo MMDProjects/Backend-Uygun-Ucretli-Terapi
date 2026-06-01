@@ -45,6 +45,8 @@ export class ExpertsService {
           bio: true,
           rating: true,
           priorityScore: true,
+          standardPrice: true,
+          discountedPrice: true,
           tags: { select: { id: true, name: true } },
           user: { select: { firstName: true, lastName: true } },
         },
@@ -67,6 +69,8 @@ export class ExpertsService {
         bio: true,
         education: true,
         rating: true,
+        standardPrice: true,
+        discountedPrice: true,
         tags: { select: { id: true, name: true } },
         availabilities: {
           where: { isBlockedByAdmin: false },
