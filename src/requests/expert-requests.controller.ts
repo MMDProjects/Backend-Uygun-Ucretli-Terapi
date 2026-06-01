@@ -8,9 +8,15 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { User } from '@prisma/client';
 
+enum UzmanAllowedRequestStatus {
+  UZMANA_YONLENDIRILDI = 'UZMANA_YONLENDIRILDI',
+  TAMAMLANDI = 'TAMAMLANDI',
+  REDDEDILDI = 'REDDEDILDI',
+}
+
 class UpdateMyRequestStatusDto {
-  @IsEnum(RequestStatus)
-  status: RequestStatus;
+  @IsEnum(UzmanAllowedRequestStatus)
+  status: UzmanAllowedRequestStatus;
 }
 
 @ApiTags('requests')
@@ -36,7 +42,7 @@ export class ExpertRequestsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateMyRequestStatusDto,
   ) {
-    return this.service.updateMyRequestStatus(user.id, id, dto.status);
+    return this.service.updateMyRequestStatus(user.id, id, dto.status as RequestStatus);
   }
 
   @Roles('DANISAN')

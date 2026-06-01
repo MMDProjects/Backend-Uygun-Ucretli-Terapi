@@ -37,4 +37,9 @@ export class CreateContactDto {
   @IsOptional()
   @IsString()
   employeeCount?: string;
+
+  @ApiPropertyOptional({ example: true, description: 'KVKK onayı' })
+  @IsBoolean()
+  @IsOptional()
+  kvkkApproved?: boolean;
 }

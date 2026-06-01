@@ -266,6 +266,15 @@ export class AdminController {
     return this.adminService.getContactForms(+page, +limit);
   }
 
+  @Patch('contact-forms/:id/status')
+  @ApiParam({ name: 'id', description: 'ContactForm UUID' })
+  updateContactFormStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('status') status: string,
+  ) {
+    return this.adminService.updateContactFormStatus(id, status);
+  }
+
   // Danışan listesi
   @Get('users')
   getUsers(@Query('page') page = '1', @Query('limit') limit = '20', @Query('search') search?: string) {

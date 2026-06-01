@@ -28,6 +28,16 @@ enum ContactSubject {
   ONERI
   SIKAYET
   DIGER
+  KURUMSAL_DANISMANLIK
+  CALISAN_DESTEK_PROGRAMI
+  EGITIM_VE_ATOLYE
+  TEKLIF_TALEBI
+}
+
+enum ContactFormStatus {
+  YENI
+  ISLEMDE
+  COZULDU
 }
 
 enum SssPage {
@@ -52,6 +62,7 @@ enum RequestStatus {
   BEKLEMEDE
   UZMANA_YONLENDIRILDI
   TAMAMLANDI
+  REDDEDILDI
 }
 
 model User {
@@ -281,10 +292,12 @@ model ContactForm {
   phone         String
   subject       ContactSubject
   message       String
-  isCorporate   Boolean        @default(false)
+  isCorporate   Boolean           @default(false)
   companyName   String?
   employeeCount String?
-  createdAt     DateTime       @default(now())
+  kvkkApproved  Boolean           @default(false)
+  status        ContactFormStatus @default(YENI)
+  createdAt     DateTime          @default(now())
 
   @@map("contact_forms")
 }

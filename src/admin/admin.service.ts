@@ -440,4 +440,13 @@ export class AdminService {
     ]);
     return { data, total, page, limit };
   }
+
+  async updateContactFormStatus(id: string, status: string) {
+    const validStatuses = ['YENI', 'ISLEMDE', 'COZULDU'];
+    if (!validStatuses.includes(status)) throw new Error(`Geçersiz status: ${status}`);
+    return this.prisma.contactForm.update({
+      where: { id },
+      data: { status: status as any },
+    });
+  }
 }
