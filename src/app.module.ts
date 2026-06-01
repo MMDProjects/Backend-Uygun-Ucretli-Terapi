@@ -20,10 +20,13 @@ import { SssModule } from './sss/sss.module';
 import { ContactModule } from './contact/contact.module';
 import { PackagesModule } from './packages/packages.module';
 
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
+  controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
@@ -45,6 +48,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PackagesModule,
   ],
   providers: [
+    AppService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
