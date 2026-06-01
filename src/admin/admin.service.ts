@@ -288,6 +288,14 @@ export class AdminService {
     });
   }
 
+  async bulkBlockAvailabilities(ids: string[], block: boolean) {
+    await this.prisma.availability.updateMany({
+      where: { id: { in: ids } },
+      data: { isBlockedByAdmin: block },
+    });
+    return { updated: ids.length, block };
+  }
+
   async getTags() {
     return this.prisma.tag.findMany({ orderBy: { name: 'asc' } });
   }

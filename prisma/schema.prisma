@@ -143,6 +143,7 @@ model Availability {
   endTime          String
   isBlockedByAdmin Boolean       @default(false)
 
+  @@unique([expertProfileId, dayOfWeek, startTime])
   @@map("availabilities")
 }
 

@@ -21,7 +21,7 @@ import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AssignQuestionDto } from '../forum/dto/assign-question.dto';
 import { RequestStatus, ApprovalStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MinLength, IsArray, IsBoolean } from 'class-validator';
 
 class UpdateBlogStatusDto {
   @IsEnum(ApprovalStatus)
@@ -58,6 +58,14 @@ class PriorityDto {
 }
 
 class BlockDto {
+  block: boolean;
+}
+
+class BulkBlockDto {
+  @IsArray()
+  ids: string[];
+
+  @IsBoolean()
   block: boolean;
 }
 
@@ -125,6 +133,12 @@ export class AdminController {
   @Patch('availabilities/:id/block')
   blockAvailability(@Param('id', ParseUUIDPipe) id: string, @Body() dto: BlockDto) {
     return this.adminService.blockAvailability(id, dto.block);
+  }
+
+  @Patch('availabilities/bulk-block')
+  @ApiOperation({ summary: 'Toplu müsaitlik kilitleme/açma' })
+  bulkBlockAvailabilities(@Body() dto: BulkBlockDto) {
+    return this.adminService.bulkBlockAvailabilities(dto.ids, dto.block);
   }
 
   // Blog yönetimi
