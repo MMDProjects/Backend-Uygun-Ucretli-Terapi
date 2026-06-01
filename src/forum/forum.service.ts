@@ -26,7 +26,7 @@ export class ForumService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          answers: { where: { isApproved: true }, select: { content: true, createdAt: true, expertProfile: { select: { title: true, user: { select: { firstName: true, lastName: true } } } } } },
+          answers: { where: { isApproved: true }, select: { content: true, createdAt: true, expertProfile: { select: { title: true, avatarUrl: true, user: { select: { firstName: true, lastName: true } } } } } },
         },
       }),
       this.prisma.forumQuestion.count({ where }),
@@ -38,7 +38,7 @@ export class ForumService {
     const q = await this.prisma.forumQuestion.findFirst({
       where: { id, status: 'CEVAPLANDI' },
       include: {
-        answers: { where: { isApproved: true } },
+        answers: { where: { isApproved: true }, include: { expertProfile: { select: { title: true, avatarUrl: true, user: { select: { firstName: true, lastName: true } } } } } },
       },
     });
     if (!q) throw new NotFoundException('Soru bulunamadı');

@@ -98,7 +98,10 @@ export class AdminService {
 
     if (dto.status === 'YAYINDA') {
       data.isPublished = true;
+      const isRevision = !!(expert.pendingBio || expert.pendingTitle || expert.pendingEducation || expert.pendingCertificateUrl || expert.pendingCvUrl);
       if (expert.pendingBio) { data.bio = expert.pendingBio; data.pendingBio = null; }
+      if (expert.pendingTitle) { data.title = expert.pendingTitle; data.pendingTitle = null; }
+      if (expert.pendingEducation) { data.education = expert.pendingEducation; data.pendingEducation = null; }
       if (expert.pendingCertificateUrl) {
         if (expert.certificateUrl) await this.storage.deleteByUrl(expert.certificateUrl);
         data.certificateUrl = expert.pendingCertificateUrl;
@@ -109,17 +112,29 @@ export class AdminService {
         data.cvUrl = expert.pendingCvUrl;
         data.pendingCvUrl = null;
       }
-      // İlk aktivasyonda default müsaitlik slotlarını oluştur
       await this.createDefaultAvailabilitiesIfEmpty(id);
+      await this.notificationsService.send(
+        expert.userId,
+        'INFO',
+        isRevision
+          ? 'Profil güncellemeniz onaylandı ve yayına alındı.'
+          : 'Profiliniz onaylandı ve yayına alındı. Artık danışanlar tarafından görünüyorsunuz.',
+      );
     }
 
     if (dto.status === 'REDDEDILDI') {
-      // Reddedilen pending dosyaları MinIO'dan sil
       if (expert.pendingCertificateUrl) await this.storage.deleteByUrl(expert.pendingCertificateUrl);
       if (expert.pendingCvUrl) await this.storage.deleteByUrl(expert.pendingCvUrl);
       data.pendingBio = null;
+      data.pendingTitle = null;
+      data.pendingEducation = null;
       data.pendingCertificateUrl = null;
       data.pendingCvUrl = null;
+      await this.notificationsService.send(
+        expert.userId,
+        'WARNING',
+        `Profiliniz reddedildi. Admin notu: ${dto.adminNote}`,
+      );
     }
 
     return this.prisma.expertProfile.update({ where: { id }, data });
@@ -183,9 +198,30 @@ export class AdminService {
     if (status === 'REDDEDILDI' && !adminNote) {
       throw new BadRequestException('Red durumunda açıklama zorunludur');
     }
-    const blog = await this.prisma.blog.findUnique({ where: { id } });
+    const blog = await this.prisma.blog.findUnique({
+      where: { id },
+      include: { expertProfile: { select: { userId: true } } },
+    });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
-    return this.prisma.blog.update({ where: { id }, data: { status, adminNote: adminNote ?? null } });
+
+    await this.prisma.blog.update({ where: { id }, data: { status, adminNote: adminNote ?? null } });
+
+    if (status === 'YAYINDA') {
+      await this.notificationsService.send(
+        blog.expertProfile.userId,
+        'INFO',
+        `"${blog.title}" başlıklı blog yazınız onaylandı ve yayına alındı.`,
+      );
+    }
+    if (status === 'REDDEDILDI') {
+      await this.notificationsService.send(
+        blog.expertProfile.userId,
+        'WARNING',
+        `"${blog.title}" başlıklı blog yazınız reddedildi. Admin notu: ${adminNote}`,
+      );
+    }
+
+    return blog;
   }
 
   async getSettings() {
@@ -269,7 +305,22 @@ export class AdminService {
   }
 
   async assignForumQuestion(id: string, expertProfileId: string) {
-    return this.forumService.assignQuestion(id, { expertProfileId });
+    const result = await this.forumService.assignQuestion(id, { expertProfileId });
+
+    const [expertProfile, question] = await Promise.all([
+      this.prisma.expertProfile.findUnique({ where: { id: expertProfileId }, select: { userId: true } }),
+      this.prisma.forumQuestion.findUnique({ where: { id }, select: { title: true } }),
+    ]);
+
+    if (expertProfile && question) {
+      await this.notificationsService.send(
+        expertProfile.userId,
+        'INFO',
+        `Yeni bir forum sorusu size atandı: "${question.title}"`,
+      );
+    }
+
+    return result;
   }
 
   async approveForumQuestion(id: string) {
