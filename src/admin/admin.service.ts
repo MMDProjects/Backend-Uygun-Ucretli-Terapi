@@ -457,13 +457,30 @@ export class AdminService {
   }
 
   async createTest(dto: { title: string; slug: string; description: string; isActive?: boolean; definition?: Record<string, unknown> }) {
-    return this.prisma.test.create({ data: { ...dto, isActive: dto.isActive ?? true } });
+    return this.prisma.test.create({
+      data: {
+        title: dto.title,
+        slug: dto.slug,
+        description: dto.description,
+        isActive: dto.isActive ?? true,
+        ...(dto.definition !== undefined && { definition: dto.definition as any }),
+      },
+    });
   }
 
   async updateTest(id: string, dto: { title: string; slug: string; description: string; isActive?: boolean; definition?: Record<string, unknown> }) {
     const test = await this.prisma.test.findUnique({ where: { id } });
     if (!test) throw new NotFoundException('Test bulunamadı');
-    return this.prisma.test.update({ where: { id }, data: dto });
+    return this.prisma.test.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        slug: dto.slug,
+        description: dto.description,
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.definition !== undefined && { definition: dto.definition as any }),
+      },
+    });
   }
 
   async deleteTest(id: string) {
