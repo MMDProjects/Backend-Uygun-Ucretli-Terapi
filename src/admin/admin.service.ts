@@ -449,4 +449,55 @@ export class AdminService {
       data: { status: status as any },
     });
   }
+
+  // ─── Test Yönetimi ────────────────────────────────────────────────────────
+
+  async getAdminTests() {
+    return this.prisma.test.findMany({ orderBy: { title: 'asc' } });
+  }
+
+  async createTest(dto: { title: string; slug: string; description: string; isActive?: boolean; definition?: Record<string, unknown> }) {
+    return this.prisma.test.create({ data: { ...dto, isActive: dto.isActive ?? true } });
+  }
+
+  async updateTest(id: string, dto: { title: string; slug: string; description: string; isActive?: boolean; definition?: Record<string, unknown> }) {
+    const test = await this.prisma.test.findUnique({ where: { id } });
+    if (!test) throw new NotFoundException('Test bulunamadı');
+    return this.prisma.test.update({ where: { id }, data: dto });
+  }
+
+  async deleteTest(id: string) {
+    const test = await this.prisma.test.findUnique({ where: { id } });
+    if (!test) throw new NotFoundException('Test bulunamadı');
+    return this.prisma.test.delete({ where: { id } });
+  }
+
+  async getAdminTestResults(page = 1, limit = 20, testId?: string, search?: string) {
+    const skip = (page - 1) * limit;
+    const where: any = {};
+    if (testId) where.testId = testId;
+    if (search) {
+      where.user = {
+        OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+        ],
+      };
+    }
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.testResult.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { firstName: true, lastName: true, email: true } },
+          test: { select: { title: true, slug: true } },
+        },
+      }),
+      this.prisma.testResult.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
 }

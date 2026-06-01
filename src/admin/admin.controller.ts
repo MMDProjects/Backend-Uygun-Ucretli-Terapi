@@ -21,7 +21,7 @@ import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AssignQuestionDto } from '../forum/dto/assign-question.dto';
 import { RequestStatus, ApprovalStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MinLength, IsArray, IsBoolean } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MinLength, IsArray, IsBoolean, IsObject } from 'class-validator';
 
 class UpdateBlogStatusDto {
   @IsEnum(ApprovalStatus)
@@ -76,6 +76,14 @@ class CreateTagDto {
 
 class ToggleTagDto {
   isActive: boolean;
+}
+
+class UpsertTestDto {
+  @IsString() title: string;
+  @IsString() slug: string;
+  @IsString() description: string;
+  @IsBoolean() @IsOptional() isActive?: boolean;
+  @IsOptional() definition?: Record<string, unknown>;
 }
 
 @ApiTags('admin')
@@ -285,6 +293,44 @@ export class AdminController {
   @Post('notifications')
   sendNotification(@Body() dto: SendNotificationDto) {
     return this.adminService.sendNotification(dto);
+  }
+
+  // Test yönetimi
+  @Get('tests')
+  @ApiOperation({ summary: 'Tüm testleri listele (definition dahil)' })
+  getAdminTests() {
+    return this.adminService.getAdminTests();
+  }
+
+  @Post('tests')
+  @ApiOperation({ summary: 'Yeni test oluştur' })
+  createTest(@Body() dto: UpsertTestDto) {
+    return this.adminService.createTest(dto);
+  }
+
+  @Put('tests/:id')
+  @ApiOperation({ summary: 'Test güncelle' })
+  @ApiParam({ name: 'id', description: 'Test UUID' })
+  updateTest(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpsertTestDto) {
+    return this.adminService.updateTest(id, dto);
+  }
+
+  @Delete('tests/:id')
+  @ApiOperation({ summary: 'Test sil' })
+  @ApiParam({ name: 'id', description: 'Test UUID' })
+  deleteTest(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.deleteTest(id);
+  }
+
+  @Get('test-results')
+  @ApiOperation({ summary: 'Test sonuçlarını listele' })
+  getTestResults(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('testId') testId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.getAdminTestResults(+page, +limit, testId, search);
   }
 
   // Etiket yönetimi

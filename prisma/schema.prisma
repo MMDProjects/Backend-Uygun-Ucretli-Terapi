@@ -226,6 +226,7 @@ model Test {
   slug        String       @unique
   description String
   isActive    Boolean      @default(true)
+  definition  Json?
   results     TestResult[]
 
   @@map("tests")
