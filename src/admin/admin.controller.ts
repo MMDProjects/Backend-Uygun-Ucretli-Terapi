@@ -117,6 +117,15 @@ export class AdminController {
     return this.adminService.toggleExpertPublish(id, dto.isPublished);
   }
 
+  @Patch('experts/:id/pricing')
+  @ApiOperation({ summary: 'Uzmana özel fiyat ata (null = global fiyat kullan)' })
+  updateExpertPricing(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { standardPrice: number | null; discountedPrice: number | null },
+  ) {
+    return this.adminService.updateExpertPricing(id, dto.standardPrice, dto.discountedPrice);
+  }
+
   @Patch('experts/:id/active')
   @ApiOperation({ summary: 'Uzman hesabını aktif / pasif yap' })
   toggleExpertActive(

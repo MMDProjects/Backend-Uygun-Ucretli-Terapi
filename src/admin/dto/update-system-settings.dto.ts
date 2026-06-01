@@ -30,4 +30,8 @@ export class UpdateSystemSettingsDto {
   @IsOptional()
   @IsArray()
   announcementItems?: string[];
+
+  @IsOptional()
+  @IsArray()
+  wheelSegments?: { label: string; description: string }[];
 }

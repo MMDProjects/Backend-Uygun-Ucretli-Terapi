@@ -25,6 +25,15 @@ const DEFAULT_ANNOUNCEMENT_ITEMS = [
   'Her uzman belgelerini danışanlarıyla şeffaf paylaşır',
 ];
 
+const DEFAULT_WHEEL_SEGMENTS = [
+  { label: 'Ön Görüş.', description: 'Ücretsiz ön görüşme hakkı — 20 dk WhatsApp görüşmesi' },
+  { label: '%10 İnd.', description: 'İlk seansta %10 indirim fırsatı' },
+  { label: 'Tekrar!', description: 'Bu sefer olmadı — bir daha dene!' },
+  { label: 'Bedava!', description: 'Ücretsiz ilk seans hakkı kazandın' },
+  { label: '%20 İnd.', description: 'İlk seansta %20 indirim fırsatı' },
+  { label: 'Sürpriz!', description: 'Özel sürpriz ödül — WhatsApp\'tan talep et' },
+];
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -153,6 +162,15 @@ export class AdminService {
     return this.prisma.expertProfile.update({ where: { id }, data: { priorityScore } });
   }
 
+  async updateExpertPricing(id: string, standardPrice: number | null, discountedPrice: number | null) {
+    const expert = await this.prisma.expertProfile.findUnique({ where: { id } });
+    if (!expert) throw new NotFoundException('Uzman bulunamadı');
+    return this.prisma.expertProfile.update({
+      where: { id },
+      data: { standardPrice, discountedPrice },
+    });
+  }
+
   async toggleExpertActive(id: string, isActive: boolean) {
     const expert = await this.prisma.expertProfile.findUnique({
       where: { id },
@@ -236,6 +254,7 @@ export class AdminService {
         discountedPrice: 1000,
         logoUrl: '/uploads/logo.png',
         announcementItems: DEFAULT_ANNOUNCEMENT_ITEMS,
+        wheelSegments: DEFAULT_WHEEL_SEGMENTS,
       },
     });
   }
@@ -245,7 +264,6 @@ export class AdminService {
     if (setting) {
       return this.prisma.systemSetting.update({ where: { id: setting.id }, data: dto });
     }
-    // Kayıt yoksa oluştur
     return this.prisma.systemSetting.create({
       data: {
         whatsappNumber: dto.whatsappNumber ?? '+905000000000',
@@ -254,6 +272,7 @@ export class AdminService {
         discountedPrice: dto.discountedPrice ?? 1000,
         logoUrl: dto.logoUrl ?? '/uploads/logo.png',
         announcementItems: dto.announcementItems ?? DEFAULT_ANNOUNCEMENT_ITEMS,
+        wheelSegments: dto.wheelSegments ?? DEFAULT_WHEEL_SEGMENTS,
       },
     });
   }

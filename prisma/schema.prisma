@@ -106,9 +106,11 @@ model ExpertProfile {
   cvUrl                 String
   pendingCertificateUrl String?
   pendingCvUrl          String?
-  priorityScore  Int            @default(1)
-  rating         Float          @default(5.0)
-  status         ApprovalStatus @default(TASLAK)
+  priorityScore   Int            @default(1)
+  rating          Float          @default(5.0)
+  standardPrice   Decimal?       @db.Decimal(10, 2)
+  discountedPrice Decimal?       @db.Decimal(10, 2)
+  status          ApprovalStatus @default(TASLAK)
   isPublished    Boolean        @default(false)
   adminNote      String?
 
@@ -326,6 +328,7 @@ model SystemSetting {
   logoUrl           String
   videoUrl          String?
   announcementItems Json     @default("[]")
+  wheelSegments     Json     @default("[]")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
