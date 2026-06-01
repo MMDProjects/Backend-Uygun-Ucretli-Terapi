@@ -12,6 +12,12 @@ import { UpsertSssDto } from './dto/upsert-sss.dto';
 import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { RequestStatus, ApprovalStatus } from '@prisma/client';
 
+const DEFAULT_SLOTS = [0, 1, 2, 3, 4, 5, 6].flatMap((day) => [
+  { dayOfWeek: day, startTime: '09:00', endTime: '12:00' },
+  { dayOfWeek: day, startTime: '12:00', endTime: '17:00' },
+  { dayOfWeek: day, startTime: '17:00', endTime: '21:00' },
+]);
+
 const DEFAULT_ANNOUNCEMENT_ITEMS = [
   'Admin onaylı, sertifikalı uzman profilleri',
   'Ücretsiz ön görüşme imkânı — WhatsApp üzerinden hemen başla',
@@ -94,17 +100,17 @@ export class AdminService {
       data.isPublished = true;
       if (expert.pendingBio) { data.bio = expert.pendingBio; data.pendingBio = null; }
       if (expert.pendingCertificateUrl) {
-        // Eski sertifikayı MinIO'dan sil
         if (expert.certificateUrl) await this.storage.deleteByUrl(expert.certificateUrl);
         data.certificateUrl = expert.pendingCertificateUrl;
         data.pendingCertificateUrl = null;
       }
       if (expert.pendingCvUrl) {
-        // Eski CV'yi MinIO'dan sil
         if (expert.cvUrl) await this.storage.deleteByUrl(expert.cvUrl);
         data.cvUrl = expert.pendingCvUrl;
         data.pendingCvUrl = null;
       }
+      // İlk aktivasyonda default müsaitlik slotlarını oluştur
+      await this.createDefaultAvailabilitiesIfEmpty(id);
     }
 
     if (dto.status === 'REDDEDILDI') {
@@ -117,6 +123,15 @@ export class AdminService {
     }
 
     return this.prisma.expertProfile.update({ where: { id }, data });
+  }
+
+  async createDefaultAvailabilitiesIfEmpty(expertProfileId: string) {
+    const existing = await this.prisma.availability.count({ where: { expertProfileId } });
+    if (existing > 0) return;
+    await this.prisma.availability.createMany({
+      data: DEFAULT_SLOTS.map((s) => ({ expertProfileId, ...s })),
+      skipDuplicates: true,
+    });
   }
 
   async updateExpertPriority(id: string, priorityScore: number) {

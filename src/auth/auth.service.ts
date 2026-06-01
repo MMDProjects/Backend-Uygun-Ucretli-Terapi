@@ -83,7 +83,21 @@ export class AuthService {
           },
         },
       },
+      include: { expertProfile: true },
     });
+
+    // Kayıt anında tüm slotları müsait olarak oluştur
+    if (user.expertProfile) {
+      const DEFAULT_SLOTS = [0, 1, 2, 3, 4, 5, 6].flatMap((day) => [
+        { dayOfWeek: day, startTime: '09:00', endTime: '12:00' },
+        { dayOfWeek: day, startTime: '12:00', endTime: '17:00' },
+        { dayOfWeek: day, startTime: '17:00', endTime: '21:00' },
+      ]);
+      await this.prisma.availability.createMany({
+        data: DEFAULT_SLOTS.map((s) => ({ expertProfileId: user.expertProfile!.id, ...s })),
+        skipDuplicates: true,
+      });
+    }
 
     return this.generateTokens(user.id, user.email, user.role, {
       firstName: user.firstName,
