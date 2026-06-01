@@ -58,6 +58,7 @@ class PriorityDto {
 }
 
 class BlockDto {
+  @IsBoolean()
   block: boolean;
 }
 
