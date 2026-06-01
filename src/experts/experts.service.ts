@@ -90,20 +90,19 @@ export class ExpertsService {
     const profile = await this.prisma.expertProfile.findUnique({ where: { userId: user.id } });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
-    // Direkt güncellenen alanlar (admin onayı gerekmez): avatar, education, title, tags
+    // Direkt güncellenen alanlar (admin onayı gerekmez): avatar, tags
     const directUpdate: Record<string, unknown> = {};
     if (avatarFile) {
       if (profile.avatarUrl) await this.storage.deleteByUrl(profile.avatarUrl);
       directUpdate.avatarUrl = await this.storage.upload('avatars', avatarFile, user.id);
     }
-    if (dto.education !== undefined) directUpdate.education = dto.education;
-    if (dto.title !== undefined) directUpdate.title = dto.title;
     if (dto.tagIds) directUpdate.tags = { set: dto.tagIds.map((id) => ({ id })) };
 
-    // Admin onayına giden alanlar: pendingBio, pendingCertificateUrl, pendingCvUrl
-    // Mevcut yayındaki içerik (bio, certificateUrl, cvUrl) korunur — isPublished değişmez
+    // Admin onayına giden alanlar: bio, title, education, certificateUrl, cvUrl
     const reviewUpdate: Record<string, unknown> = {};
     if (dto.bio !== undefined) reviewUpdate.pendingBio = dto.bio;
+    if (dto.title !== undefined) reviewUpdate.pendingTitle = dto.title;
+    if (dto.education !== undefined) reviewUpdate.pendingEducation = dto.education;
     if (certificateFile) reviewUpdate.pendingCertificateUrl = await this.storage.upload('certificates', certificateFile, user.id);
     if (cvFile) reviewUpdate.pendingCvUrl = await this.storage.upload('cvs', cvFile, user.id);
 
