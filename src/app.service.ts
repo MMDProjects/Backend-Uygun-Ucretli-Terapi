@@ -44,6 +44,7 @@ export class AppService {
       standardPrice: Number(s?.standardPrice ?? 1500),
       discountedPrice: Number(s?.discountedPrice ?? 1000),
       whatsappNumber: s?.whatsappNumber ?? '',
+      videoUrl: s?.videoUrl ?? null,
       announcementItems: items,
       wheelSegments: segments,
     };
