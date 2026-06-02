@@ -61,6 +61,7 @@ export class AuthController {
         password: { type: 'string', example: 'Sifre1234!' },
         title: { type: 'string', example: 'Uzman Klinik Psikolog' },
         kvkkConsent: { type: 'boolean', example: true },
+        tagIds: { type: 'array', items: { type: 'string' }, description: 'Etiket UUID listesi (opsiyonel, min 2 max 5)' },
         certificate: { type: 'string', format: 'binary', description: 'Sertifika PDF (max 10MB)' },
         cv: { type: 'string', format: 'binary', description: 'CV PDF (max 10MB)' },
       },

@@ -25,7 +25,6 @@ export class ExpertsService {
     const tagIds = tags ? tags.split(',').filter(Boolean) : [];
 
     const where = {
-      status: 'YAYINDA' as const,
       isPublished: true,
       ...(tagIds.length > 0 && {
         tags: { some: { id: { in: tagIds } } },
@@ -59,7 +58,7 @@ export class ExpertsService {
 
   async findOne(id: string) {
     const expert = await this.prisma.expertProfile.findFirst({
-      where: { id, status: 'YAYINDA', isPublished: true },
+      where: { id, isPublished: true },
       select: {
         id: true,
         title: true,
@@ -175,7 +174,7 @@ export class ExpertsService {
 
   async getExpertAvailabilities(expertId: string) {
     const profile = await this.prisma.expertProfile.findFirst({
-      where: { id: expertId, status: 'YAYINDA' },
+      where: { id: expertId, isPublished: true },
     });
     if (!profile) throw new NotFoundException('Uzman bulunamadı');
 
@@ -234,7 +233,7 @@ export class ExpertsService {
 
   async getExpertBlogs(expertProfileId: string) {
     const profile = await this.prisma.expertProfile.findFirst({
-      where: { id: expertProfileId, status: 'YAYINDA' },
+      where: { id: expertProfileId, isPublished: true },
     });
     if (!profile) throw new NotFoundException('Uzman bulunamadı');
 

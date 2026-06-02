@@ -80,6 +80,9 @@ export class AuthService {
             certificateUrl,
             cvUrl,
             status: 'ONAY_BEKLIYOR',
+            ...(dto.tagIds?.length && {
+              tags: { connect: dto.tagIds.map((id) => ({ id })) },
+            }),
           },
         },
       },

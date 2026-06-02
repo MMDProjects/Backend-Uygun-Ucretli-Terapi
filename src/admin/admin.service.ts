@@ -244,25 +244,46 @@ export class AdminService {
 
   async getSettings() {
     const s = await this.prisma.systemSetting.findFirst();
-    if (s) return s;
-    // Kayıt yoksa varsayılan oluştur
-    return this.prisma.systemSetting.create({
-      data: {
-        whatsappNumber: '+905000000000',
-        instagramUrl: 'https://instagram.com/psikodanismanlik',
-        standardPrice: 1500,
-        discountedPrice: 1000,
-        logoUrl: '/uploads/logo.png',
-        announcementItems: DEFAULT_ANNOUNCEMENT_ITEMS,
-        wheelSegments: DEFAULT_WHEEL_SEGMENTS,
-      },
-    });
+    if (!s) {
+      return this.prisma.systemSetting.create({
+        data: {
+          whatsappNumber: '+905000000000',
+          instagramUrl: 'https://instagram.com/psikodanismanlik',
+          standardPrice: 1500,
+          discountedPrice: 1000,
+          logoUrl: '/uploads/logo.png',
+          announcementItems: DEFAULT_ANNOUNCEMENT_ITEMS,
+          wheelSegments: DEFAULT_WHEEL_SEGMENTS,
+        },
+      });
+    }
+
+    // wheelSegments boş/null ise default'ları DB'ye yaz ve dön
+    const segments = s.wheelSegments as { label: string; description: string }[] | null;
+    if (!segments || (Array.isArray(segments) && segments.length < 2)) {
+      return this.prisma.systemSetting.update({
+        where: { id: s.id },
+        data: { wheelSegments: DEFAULT_WHEEL_SEGMENTS },
+      });
+    }
+
+    return s;
   }
 
   async updateSettings(dto: UpdateSystemSettingsDto) {
     const setting = await this.prisma.systemSetting.findFirst();
     if (setting) {
-      return this.prisma.systemSetting.update({ where: { id: setting.id }, data: dto });
+      // Sadece gönderilen alanları güncelle — undefined alanlar mevcut değeri korumalı
+      const patch: Record<string, unknown> = {};
+      if (dto.whatsappNumber !== undefined) patch.whatsappNumber = dto.whatsappNumber;
+      if (dto.instagramUrl !== undefined) patch.instagramUrl = dto.instagramUrl;
+      if (dto.standardPrice !== undefined) patch.standardPrice = dto.standardPrice;
+      if (dto.discountedPrice !== undefined) patch.discountedPrice = dto.discountedPrice;
+      if (dto.logoUrl !== undefined) patch.logoUrl = dto.logoUrl;
+      if (dto.videoUrl !== undefined) patch.videoUrl = dto.videoUrl;
+      if (dto.announcementItems !== undefined) patch.announcementItems = dto.announcementItems;
+      if (dto.wheelSegments !== undefined) patch.wheelSegments = dto.wheelSegments;
+      return this.prisma.systemSetting.update({ where: { id: setting.id }, data: patch });
     }
     return this.prisma.systemSetting.create({
       data: {
