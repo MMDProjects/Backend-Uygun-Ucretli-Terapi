@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, IsBoolean, Equals, Matches } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsString, MinLength, IsBoolean, Equals, Matches, IsOptional, IsArray, IsUUID } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class RegisterUzmanDto {
@@ -33,4 +33,11 @@ export class RegisterUzmanDto {
   @IsBoolean()
   @Equals(true, { message: 'KVKK onayı zorunludur' })
   kvkkConsent: boolean;
+
+  @ApiPropertyOptional({ type: [String], example: ['uuid-1', 'uuid-2'], description: 'Seçilen etiket UUID listesi (opsiyonel)' })
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
+  @IsArray()
+  @IsUUID('all', { each: true })
+  tagIds?: string[];
 }
