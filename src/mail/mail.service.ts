@@ -168,6 +168,51 @@ export class MailService {
     await this.send(email, name, 'Profiliniz Onaylandı!', this.buildEmailHtml('Profiliniz Yayında 🎉', body));
   }
 
+  // ─── Blog Onay ─────────────────────────────────────────────────────────────
+
+  async sendBlogApproved(email: string, name: string, blogTitle: string) {
+    const body = `
+      <p style="color:#1a1a1a;line-height:1.7">Merhaba <strong>${name}</strong>,</p>
+      <p style="color:#4a4a4a;line-height:1.7">
+        <strong>"${blogTitle}"</strong> başlıklı blog yazınız onaylandı ve yayına alındı.
+      </p>
+      ${this.ctaButton('Blog Yazımı Görüntüle', `${this.frontendUrl}/uzman/blog`)}
+    `;
+    await this.send(email, name, `Blog yazınız yayında: "${blogTitle}"`, this.buildEmailHtml('Blog Yazınız Onaylandı 🎉', body));
+  }
+
+  // ─── Blog Red ──────────────────────────────────────────────────────────────
+
+  async sendBlogRejected(email: string, name: string, blogTitle: string, adminNote: string) {
+    const body = `
+      <p style="color:#1a1a1a;line-height:1.7">Merhaba <strong>${name}</strong>,</p>
+      <p style="color:#4a4a4a;line-height:1.7">
+        <strong>"${blogTitle}"</strong> başlıklı blog yazınız incelendi ancak yayına alınamadı.
+      </p>
+      <div style="background:#fff3f3;border-left:4px solid #dc2626;padding:14px 18px;margin:20px 0;border-radius:4px">
+        <strong style="color:#dc2626">Admin Notu:</strong>
+        <p style="color:#1a1a1a;margin:8px 0 0">${adminNote}</p>
+      </div>
+      <p style="color:#4a4a4a;line-height:1.7">Düzeltip tekrar gönderebilirsiniz.</p>
+      ${this.ctaButton('Blog Yazımı Düzenle', `${this.frontendUrl}/uzman/blog`)}
+    `;
+    await this.send(email, name, `Blog yazınız hakkında bilgi: "${blogTitle}"`, this.buildEmailHtml('Blog Yazısı Güncellemesi Gerekli', body));
+  }
+
+  // ─── Admin Uyarı → Uzman (R18) ─────────────────────────────────────────────
+
+  async sendAdminWarningToExpert(email: string, name: string, message: string) {
+    const body = `
+      <p style="color:#1a1a1a;line-height:1.7">Merhaba <strong>${name}</strong>,</p>
+      <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:14px 18px;margin:20px 0;border-radius:4px">
+        <strong style="color:#b45309">Admin Mesajı:</strong>
+        <p style="color:#1a1a1a;margin:8px 0 0">${message}</p>
+      </div>
+      ${this.ctaButton('Bildirimlerime Git', `${this.frontendUrl}/uzman/bildirimler`)}
+    `;
+    await this.send(email, name, 'Platform Yönetiminden Bildirim', this.buildEmailHtml('Yönetimden Mesajınız Var', body));
+  }
+
   // ─── Uzman Profil Red ─────────────────────────────────────────────────────
 
   async sendExpertProfileRejected(email: string, name: string, adminNote: string) {

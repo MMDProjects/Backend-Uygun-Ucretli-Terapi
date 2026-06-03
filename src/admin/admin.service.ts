@@ -48,21 +48,35 @@ export class AdminService {
   ) {}
 
   async getDashboard() {
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
     const [
       pendingExperts,
       pendingBlogs,
       pendingComments,
       pendingQuestions,
       newRequests,
+      pendingForumAnswers,
+      newTestResults,
     ] = await this.prisma.$transaction([
       this.prisma.expertProfile.count({ where: { status: 'ONAY_BEKLIYOR' } }),
       this.prisma.blog.count({ where: { status: 'ONAY_BEKLIYOR' } }),
       this.prisma.comment.count({ where: { isApproved: false } }),
       this.prisma.forumQuestion.count({ where: { status: 'ONAY_BEKLIYOR' } }),
       this.prisma.expertRequest.count({ where: { status: 'BEKLEMEDE' } }),
+      this.prisma.forumAnswer.count({ where: { isApproved: false } }),
+      this.prisma.testResult.count({ where: { createdAt: { gte: since24h } } }),
     ]);
 
-    return { pendingExperts, pendingBlogs, pendingComments, pendingQuestions, newRequests };
+    return {
+      pendingExperts,
+      pendingBlogs,
+      pendingComments,
+      pendingQuestions,
+      newRequests,
+      pendingForumAnswers,
+      newTestResults,
+    };
   }
 
   async getExperts(page = 1, limit = 20) {
@@ -284,6 +298,8 @@ export class AdminService {
         'INFO',
         `"${blog.title}" başlıklı blog yazınız onaylandı ve yayına alındı.`,
       );
+      const u = await this.prisma.user.findUnique({ where: { id: blog.expertProfile.userId }, select: { email: true, firstName: true } });
+      if (u) this.mail.sendBlogApproved(u.email, u.firstName, blog.title).catch(() => {});
     }
     if (status === 'REDDEDILDI') {
       await this.notificationsService.send(
@@ -291,6 +307,8 @@ export class AdminService {
         'WARNING',
         `"${blog.title}" başlıklı blog yazınız reddedildi. Admin notu: ${adminNote}`,
       );
+      const u = await this.prisma.user.findUnique({ where: { id: blog.expertProfile.userId }, select: { email: true, firstName: true } });
+      if (u) this.mail.sendBlogRejected(u.email, u.firstName, blog.title, adminNote ?? '').catch(() => {});
     }
 
     return blog;
@@ -380,7 +398,11 @@ export class AdminService {
   }
 
   async sendNotification(dto: SendNotificationDto) {
-    return this.notificationsService.send(dto.userId, dto.type, dto.message);
+    const result = await this.notificationsService.send(dto.userId, dto.type, dto.message);
+    // R18: admin uyarısında email de gönder
+    const u = await this.prisma.user.findUnique({ where: { id: dto.userId }, select: { email: true, firstName: true } });
+    if (u) this.mail.sendAdminWarningToExpert(u.email, u.firstName, dto.message).catch(() => {});
+    return result;
   }
 
   async getForumQuestions(status?: string) {
@@ -422,11 +444,38 @@ export class AdminService {
   }
 
   async approveForumAnswer(id: string) {
-    return this.forumService.approveAnswer(id);
+    const answer = await this.prisma.forumAnswer.findUnique({
+      where: { id },
+      include: {
+        expertProfile: { select: { userId: true } },
+        question: { select: { title: true } },
+      },
+    });
+    const result = await this.forumService.approveAnswer(id);
+    if (answer?.expertProfile?.userId) {
+      this.notificationsService.send(
+        answer.expertProfile.userId,
+        'INFO',
+        `Forum cevabınız onaylandı: "${answer.question?.title ?? ''}"`,
+      ).catch(() => {});
+    }
+    return result;
   }
 
   async approveComment(id: string) {
-    return this.commentsService.approve(id);
+    const comment = await this.prisma.comment.findUnique({
+      where: { id },
+      include: { expertProfile: { select: { userId: true } } },
+    });
+    const result = await this.commentsService.approve(id);
+    if (comment?.expertProfile?.userId) {
+      this.notificationsService.send(
+        comment.expertProfile.userId,
+        'INFO',
+        'Profilinize yeni bir yorum onaylandı ve yayına alındı.',
+      ).catch(() => {});
+    }
+    return result;
   }
 
   async getRequests(page = 1, limit = 20) {
