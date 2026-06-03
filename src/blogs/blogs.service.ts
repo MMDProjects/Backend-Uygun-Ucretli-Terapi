@@ -49,8 +49,20 @@ export class BlogsService {
     if (!blog) throw new NotFoundException('Blog bulunamadı');
     if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
-    const newStatus = blog.status === 'REDDEDILDI' ? 'REVIZE_GONDERILDI' : 'ONAY_BEKLIYOR';
+    // Yayındaki blog: değişiklikler pending'e gider, eski içerik yayında kalır
+    if (blog.status === 'YAYINDA') {
+      return this.prisma.blog.update({
+        where: { id },
+        data: {
+          pendingTitle: dto.title ?? blog.pendingTitle,
+          pendingContent: dto.content ?? blog.pendingContent,
+          status: 'REVIZE_GONDERILDI',
+        },
+      });
+    }
 
+    // Taslak veya reddedildi → direkt güncelle
+    const newStatus = blog.status === 'REDDEDILDI' ? 'REVIZE_GONDERILDI' : 'ONAY_BEKLIYOR';
     return this.prisma.blog.update({
       where: { id },
       data: { ...dto, status: newStatus },
@@ -77,12 +89,17 @@ export class BlogsService {
     if (!blog) throw new NotFoundException('Blog bulunamadı');
     if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
-    if (blog.coverImageUrl) {
-      await this.storage.deleteByUrl(blog.coverImageUrl);
+    const url = await this.storage.upload('blog-covers', file, user.id);
+
+    if (blog.status === 'YAYINDA') {
+      // Yayındaki blog: kapak da pending'e gider
+      if (blog.pendingCoverImageUrl) await this.storage.deleteByUrl(blog.pendingCoverImageUrl);
+      await this.prisma.blog.update({ where: { id }, data: { pendingCoverImageUrl: url, status: 'REVIZE_GONDERILDI' } });
+    } else {
+      if (blog.coverImageUrl) await this.storage.deleteByUrl(blog.coverImageUrl);
+      await this.prisma.blog.update({ where: { id }, data: { coverImageUrl: url } });
     }
 
-    const url = await this.storage.upload('blog-covers', file, user.id);
-    await this.prisma.blog.update({ where: { id }, data: { coverImageUrl: url } });
     return { coverImageUrl: url };
   }
 }
