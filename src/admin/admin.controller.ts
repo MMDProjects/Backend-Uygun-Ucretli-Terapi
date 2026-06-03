@@ -165,6 +165,11 @@ export class AdminController {
     return this.adminService.getBlogs(+page, +limit);
   }
 
+  @Post('blogs')
+  createBlog(@Body() dto: { title: string; slug: string; content: string; authorName: string; coverImageUrl?: string }) {
+    return this.adminService.createAdminBlog(dto);
+  }
+
   @Patch('blogs/:id/status')
   updateBlogStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -179,6 +184,11 @@ export class AdminController {
     @Body() dto: UpdateBlogContentDto,
   ) {
     return this.adminService.updateBlogContent(id, dto);
+  }
+
+  @Delete('blogs/:id')
+  deleteBlog(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.deleteBlog(id);
   }
 
   // Forum yönetimi
@@ -347,5 +357,10 @@ export class AdminController {
   @Patch('tags/:id')
   toggleTag(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ToggleTagDto) {
     return this.adminService.toggleTag(id, dto.isActive);
+  }
+
+  @Delete('tags/:id')
+  deleteTag(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.deleteTag(id);
   }
 }

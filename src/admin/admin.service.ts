@@ -206,10 +206,36 @@ export class AdminService {
     return { data, total, page, limit };
   }
 
+  async createAdminBlog(dto: { title: string; slug: string; content: string; authorName: string; coverImageUrl?: string }) {
+    // Admin blogları için sistem uzman profilini bul (öncelikli: en yüksek priorityScore)
+    const profile = await this.prisma.expertProfile.findFirst({
+      orderBy: { priorityScore: 'desc' },
+    });
+    if (!profile) throw new BadRequestException('Blog yazabilmek için sistemde en az bir uzman profili olmalıdır.');
+
+    return this.prisma.blog.create({
+      data: {
+        title: dto.title,
+        slug: dto.slug,
+        content: dto.content,
+        authorName: dto.authorName,
+        coverImageUrl: dto.coverImageUrl ?? null,
+        status: 'YAYINDA',
+        expertProfileId: profile.id,
+      },
+    });
+  }
+
   async updateBlogContent(id: string, dto: { title?: string; slug?: string; content?: string }) {
     const blog = await this.prisma.blog.findUnique({ where: { id } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
     return this.prisma.blog.update({ where: { id }, data: dto });
+  }
+
+  async deleteBlog(id: string) {
+    const blog = await this.prisma.blog.findUnique({ where: { id } });
+    if (!blog) throw new NotFoundException('Blog bulunamadı');
+    return this.prisma.blog.delete({ where: { id } });
   }
 
   async updateBlogStatus(id: string, status: ApprovalStatus, adminNote?: string) {
@@ -222,7 +248,27 @@ export class AdminService {
     });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
 
-    await this.prisma.blog.update({ where: { id }, data: { status, adminNote: adminNote ?? null } });
+    const updateData: Record<string, unknown> = { status, adminNote: adminNote ?? null };
+
+    if (status === 'YAYINDA') {
+      // Revize onaylandıysa pending içeriği ana alanlara taşı
+      if (blog.pendingTitle) { updateData.title = blog.pendingTitle; updateData.pendingTitle = null; }
+      if (blog.pendingContent) { updateData.content = blog.pendingContent; updateData.pendingContent = null; }
+      if (blog.pendingCoverImageUrl) {
+        if (blog.coverImageUrl) await this.storage.deleteByUrl(blog.coverImageUrl);
+        updateData.coverImageUrl = blog.pendingCoverImageUrl;
+        updateData.pendingCoverImageUrl = null;
+      }
+    }
+
+    if (status === 'REDDEDILDI') {
+      // Reddedilince pending'leri temizle
+      updateData.pendingTitle = null;
+      updateData.pendingContent = null;
+      updateData.pendingCoverImageUrl = null;
+    }
+
+    await this.prisma.blog.update({ where: { id }, data: updateData });
 
     if (status === 'YAYINDA') {
       await this.notificationsService.send(
@@ -412,6 +458,15 @@ export class AdminService {
 
   async toggleTag(id: string, isActive: boolean) {
     return this.prisma.tag.update({ where: { id }, data: { isActive } });
+  }
+
+  async deleteTag(id: string) {
+    // Önce tüm uzman profillerinden bu tag'ı kaldır, sonra sil
+    await this.prisma.tag.update({
+      where: { id },
+      data: { profiles: { set: [] } },
+    });
+    return this.prisma.tag.delete({ where: { id } });
   }
 
   async getUsers(page: number, limit: number, search?: string) {
