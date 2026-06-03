@@ -45,10 +45,14 @@ export class AuthService {
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.role, {
+    const tokens = this.generateTokens(user.id, user.email, user.role, {
       firstName: user.firstName,
       lastName: user.lastName,
     });
+
+    this.mail.sendWelcomeDanisan(user.email, user.firstName).catch(() => {});
+
+    return tokens;
   }
 
   async registerUzman(
@@ -102,10 +106,15 @@ export class AuthService {
       });
     }
 
-    return this.generateTokens(user.id, user.email, user.role, {
+    const tokens = this.generateTokens(user.id, user.email, user.role, {
       firstName: user.firstName,
       lastName: user.lastName,
     });
+
+    const fullName = `${user.firstName} ${user.lastName}`.trim();
+    this.mail.sendNewExpertApplicationAdmin(fullName, user.email).catch(() => {});
+
+    return tokens;
   }
 
   async login(dto: LoginDto) {

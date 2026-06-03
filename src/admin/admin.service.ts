@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
 import { CommentsService } from '../comments/comments.service';
 import { ExpertRequestsService } from '../requests/expert-requests.service';
 import { ForumService } from '../forum/forum.service';
@@ -40,6 +41,7 @@ export class AdminService {
     private prisma: PrismaService,
     private storage: StorageService,
     private notificationsService: NotificationsService,
+    private mail: MailService,
     private commentsService: CommentsService,
     private expertRequestsService: ExpertRequestsService,
     private forumService: ForumService,
@@ -129,6 +131,9 @@ export class AdminService {
           ? 'Profil güncellemeniz onaylandı ve yayına alındı.'
           : 'Profiliniz onaylandı ve yayına alındı. Artık danışanlar tarafından görünüyorsunuz.',
       );
+      // Mail (SSE'ye ek)
+      const approvedUser = await this.prisma.user.findUnique({ where: { id: expert.userId }, select: { email: true, firstName: true } });
+      if (approvedUser) this.mail.sendExpertProfileApproved(approvedUser.email, approvedUser.firstName).catch(() => {});
     }
 
     if (dto.status === 'REDDEDILDI') {
@@ -144,6 +149,9 @@ export class AdminService {
         'WARNING',
         `Profiliniz reddedildi. Admin notu: ${dto.adminNote}`,
       );
+      // Mail (SSE'ye ek)
+      const rejectedUser = await this.prisma.user.findUnique({ where: { id: expert.userId }, select: { email: true, firstName: true } });
+      if (rejectedUser) this.mail.sendExpertProfileRejected(rejectedUser.email, rejectedUser.firstName, dto.adminNote ?? '').catch(() => {});
     }
 
     return this.prisma.expertProfile.update({ where: { id }, data });
