@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Sse } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Query, Sse } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 import { NotificationsService } from './notifications.service';
@@ -27,6 +27,20 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Okunmamış bildirimler' })
   getUnread(@CurrentUser() user: User) {
     return this.notificationsService.getUnread(user.id);
+  }
+
+  @Get('all')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Tüm bildirimler (okunmuş + okunmamış)' })
+  getAll(@CurrentUser() user: User, @Query('limit') limit = '50') {
+    return this.notificationsService.getAll(user.id, +limit);
+  }
+
+  @Patch('read-all')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Tüm bildirimleri okundu işaretle' })
+  markAllRead(@CurrentUser() user: User) {
+    return this.notificationsService.markAllRead(user.id);
   }
 
   @Patch(':id/read')
