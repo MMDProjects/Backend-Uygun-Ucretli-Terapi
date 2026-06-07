@@ -371,7 +371,7 @@ export class AdminService {
   }
 
   async getPackages() {
-    return this.prisma.package.findMany({ orderBy: { sessionCount: 'asc' } });
+    return this.prisma.package.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
   }
 
   async updatePackage(id: string, dto: UpsertPackageDto) {

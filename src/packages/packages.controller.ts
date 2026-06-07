@@ -12,7 +12,7 @@ export class PackagesController {
   @Get()
   @ApiOperation({ summary: 'Paket listesi (public)', description: 'Admin tarafından yönetilen 5 paket. Uzman sayfalarında fiyat gösterilmez, sadece bu endpoint kullanılır.' })
   findAll() {
-    return this.prisma.package.findMany({ orderBy: { sessionCount: 'asc' } });
+    return this.prisma.package.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
   }
 
   @Get('pricing')

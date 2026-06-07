@@ -283,6 +283,7 @@ model Package {
   id           String   @id @default(uuid())
   name         String
   sessionCount Int
+  sortOrder    Int      @default(0)
   price        Decimal  @db.Decimal(10, 2)
   description  String
   updatedAt    DateTime @updatedAt
