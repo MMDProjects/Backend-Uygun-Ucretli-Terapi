@@ -11,7 +11,7 @@ import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { UpsertSssDto } from './dto/upsert-sss.dto';
 import { UpsertPackageDto } from './dto/upsert-package.dto';
-import { RequestStatus, ApprovalStatus, Prisma } from '@prisma/client';
+import { RequestStatus, ApprovalStatus, Prisma, Role } from '@prisma/client';
 
 /** Bir haftanın (weekStart=Pazartesi) her günü için 3 blok slot üretir */
 function generateWeekSlots(expertProfileId: string, weekStart: Date) {
@@ -703,7 +703,7 @@ export class AdminService {
   }
 
   async getAdminUsers(search?: string) {
-    const roleFilter = { role: { in: ['ADMIN', 'UZMAN'] as const } };
+    const roleFilter = { role: { in: [Role.ADMIN, Role.UZMAN] } };
     const where = search
       ? {
           ...roleFilter,
