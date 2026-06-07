@@ -87,7 +87,7 @@ export class AdminService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          user: { select: { firstName: true, lastName: true, email: true, phone: true, isActive: true } },
+          user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, isActive: true } },
           tags: true,
         },
       }),
@@ -100,7 +100,7 @@ export class AdminService {
     const expert = await this.prisma.expertProfile.findUnique({
       where: { id },
       include: {
-        user: { select: { firstName: true, lastName: true, email: true, phone: true, isActive: true } },
+        user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, isActive: true } },
         tags: true,
       },
     });
