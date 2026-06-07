@@ -301,11 +301,25 @@ model ContactForm {
   isCorporate   Boolean           @default(false)
   companyName   String?
   employeeCount String?
-  kvkkApproved  Boolean           @default(false)
-  status        ContactFormStatus @default(YENI)
+  kvkkApproved    Boolean           @default(false)
+  kvkkVersionId   String?
+  kvkkVersionRef  KvkkVersion?      @relation(fields: [kvkkVersionId], references: [id], onDelete: SetNull)
+  status          ContactFormStatus @default(YENI)
   createdAt     DateTime          @default(now())
 
   @@map("contact_forms")
+}
+
+model KvkkVersion {
+  id          String        @id @default(uuid())
+  version     String
+  sections    Json
+  publishedAt DateTime      @default(now())
+  isActive    Boolean       @default(false)
+
+  contactForms ContactForm[]
+
+  @@map("kvkk_versions")
 }
 
 model Newsletter {
@@ -350,6 +364,8 @@ model SystemSetting {
   wheelSegments        Json     @default("[]")
   loginPopupSettings   Json     @default("{}")
   staticPageContent    Json?
+  kvkkContent          Json?
+  kvkkVersion          String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

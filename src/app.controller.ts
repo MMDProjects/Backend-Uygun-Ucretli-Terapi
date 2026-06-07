@@ -16,4 +16,10 @@ export class AppController {
   getPublicSettings() {
     return this.appService.getPublicSettings();
   }
+
+  @Public()
+  @Get('kvkk')
+  getPublicKvkk() {
+    return this.appService.getPublicKvkk();
+  }
 }

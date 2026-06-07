@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { AdminService, getThisMonday } from './admin.service';
+import { AppService } from '../app.service';
 import { UpdateExpertStatusDto } from './dto/update-expert-status.dto';
 import { TogglePublishDto } from './dto/toggle-publish.dto';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
@@ -85,6 +86,17 @@ class StaticPageContentUpdateDto {
   extraSections: object[];
 }
 
+class KvkkSectionDto {
+  @IsString() id: string;
+  @IsString() title: string;
+  @IsString() html: string;
+}
+
+class KvkkContentUpdateDto {
+  @IsString() version: string;
+  @IsArray() sections: KvkkSectionDto[];
+}
+
 class UpsertTestDto {
   @IsString() title: string;
   @IsString() slug: string;
@@ -98,7 +110,10 @@ class UpsertTestDto {
 @Roles('ADMIN')
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly appService: AppService,
+  ) {}
 
   @Get('dashboard')
   getDashboard() {
@@ -390,5 +405,16 @@ export class AdminController {
   @Put('content/static-pages')
   updateStaticPageContent(@Body() payload: StaticPageContentUpdateDto) {
     return this.adminService.updateStaticPageContent(payload);
+  }
+
+  // KVKK içeriği
+  @Get('content/kvkk')
+  getKvkkContent() {
+    return this.appService.getKvkkContent();
+  }
+
+  @Post('content/kvkk')
+  publishKvkkVersion(@Body() payload: KvkkContentUpdateDto) {
+    return this.appService.publishKvkkVersion(payload.version, payload.sections);
   }
 }

@@ -42,4 +42,9 @@ export class CreateContactDto {
   @IsBoolean()
   @IsOptional()
   kvkkApproved?: boolean;
+
+  @ApiPropertyOptional({ example: 'uuid', description: 'Onaylanan KVKK versiyonu ID' })
+  @IsString()
+  @IsOptional()
+  kvkkVersionId?: string;
 }
