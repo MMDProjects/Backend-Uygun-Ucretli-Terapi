@@ -78,6 +78,13 @@ class ToggleTagDto {
   isActive: boolean;
 }
 
+class StaticPageContentUpdateDto {
+  about: string;
+  vision: string;
+  mission: string;
+  extraSections: object[];
+}
+
 class UpsertTestDto {
   @IsString() title: string;
   @IsString() slug: string;
@@ -303,6 +310,12 @@ export class AdminController {
     return this.adminService.getUsers(+page, +limit, search);
   }
 
+  // Admin/personel kullanıcı listesi
+  @Get('admin-users')
+  getAdminUsers(@Query('search') search?: string) {
+    return this.adminService.getAdminUsers(search);
+  }
+
   // Bildirim gönder
   @Post('notifications')
   sendNotification(@Body() dto: SendNotificationDto) {
@@ -366,5 +379,16 @@ export class AdminController {
   @Delete('tags/:id')
   deleteTag(@Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.deleteTag(id);
+  }
+
+  // Statik sayfa içerikleri
+  @Get('content/static-pages')
+  getStaticPageContent() {
+    return this.adminService.getStaticPageContent();
+  }
+
+  @Put('content/static-pages')
+  updateStaticPageContent(@Body() payload: StaticPageContentUpdateDto) {
+    return this.adminService.updateStaticPageContent(payload);
   }
 }

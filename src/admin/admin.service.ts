@@ -701,4 +701,52 @@ export class AdminService {
     ]);
     return { data, total, page, limit };
   }
+
+  async getAdminUsers(search?: string) {
+    const where = search
+      ? {
+          role: 'ADMIN' as const,
+          OR: [
+            { firstName: { contains: search, mode: 'insensitive' as const } },
+            { lastName: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : { role: 'ADMIN' as const };
+
+    const data = await this.prisma.user.findMany({
+      where,
+      select: { id: true, firstName: true, lastName: true, email: true, isActive: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { data };
+  }
+
+  async getStaticPageContent() {
+    const s = await this.prisma.systemSetting.findFirst();
+    const defaultContent = { about: '', vision: '', mission: '', extraSections: [] };
+    return { success: true, data: (s?.staticPageContent ?? defaultContent) };
+  }
+
+  async updateStaticPageContent(payload: { about: string; vision: string; mission: string; extraSections: object[] }) {
+    const s = await this.prisma.systemSetting.findFirst();
+    if (s) {
+      await this.prisma.systemSetting.update({
+        where: { id: s.id },
+        data: { staticPageContent: payload as Record<string, unknown> },
+      });
+    } else {
+      await this.prisma.systemSetting.create({
+        data: {
+          whatsappNumber: '+905000000000',
+          instagramUrl: 'https://instagram.com/psikodanismanlik',
+          standardPrice: 1500,
+          discountedPrice: 1000,
+          logoUrl: '/uploads/logo.png',
+          staticPageContent: payload as Record<string, unknown>,
+        },
+      });
+    }
+    return { success: true, data: payload, message: 'İçerik kaydedildi.' };
+  }
 }
