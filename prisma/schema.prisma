@@ -346,8 +346,9 @@ model SystemSetting {
   discountedPrice   Decimal  @db.Decimal(10, 2) @default(1000.00)
   logoUrl           String
   videoUrl          String?
-  announcementItems Json     @default("[]")
-  wheelSegments     Json     @default("[]")
+  announcementItems    Json     @default("[]")
+  wheelSegments        Json     @default("[]")
+  loginPopupSettings   Json     @default("{}")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

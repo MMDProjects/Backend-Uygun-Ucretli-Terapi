@@ -8,6 +8,14 @@ const DEFAULT_ANNOUNCEMENT_ITEMS = [
   'Her uzman belgelerini danışanlarıyla şeffaf paylaşır',
 ];
 
+const DEFAULT_LOGIN_POPUP_SETTINGS = {
+  title: "Ücretsiz Ön Görüşme\nHakkınız Hazır",
+  description: "Platforma hoş geldiniz. Size özel ücretsiz ön görüşme hakkınızı kullanarak doğru uzmanı bulmanıza yardımcı olalım.",
+  benefits: ["30 dakikalık tanışma seansı", "Uzmanla birebir değerlendirme", "Hiçbir ücret talep edilmez"],
+  buttonText: "Uzmanları İncele",
+  buttonUrl: "/uzmanlar",
+};
+
 const DEFAULT_WHEEL_SEGMENTS = [
   { label: 'Ön Görüş.', description: 'Ücretsiz ön görüşme hakkı — 20 dk WhatsApp görüşmesi' },
   { label: '%10 İnd.', description: 'İlk seansta %10 indirim fırsatı' },
@@ -40,6 +48,11 @@ export class AppService {
       }).catch(() => {});
     }
 
+    const rawPopup = (s?.loginPopupSettings as Record<string, unknown> | null) ?? {};
+    const loginPopupSettings = Object.keys(rawPopup).length > 0
+      ? rawPopup
+      : DEFAULT_LOGIN_POPUP_SETTINGS;
+
     return {
       standardPrice: Number(s?.standardPrice ?? 1500),
       discountedPrice: Number(s?.discountedPrice ?? 1000),
@@ -47,6 +60,7 @@ export class AppService {
       videoUrl: s?.videoUrl ?? null,
       announcementItems: items,
       wheelSegments: segments,
+      loginPopupSettings,
     };
   }
 }

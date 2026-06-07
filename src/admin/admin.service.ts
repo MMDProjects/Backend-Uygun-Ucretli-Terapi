@@ -377,6 +377,7 @@ export class AdminService {
       if (dto.videoUrl !== undefined) patch.videoUrl = dto.videoUrl;
       if (dto.announcementItems !== undefined) patch.announcementItems = dto.announcementItems;
       if (dto.wheelSegments !== undefined) patch.wheelSegments = dto.wheelSegments;
+      if (dto.loginPopupSettings !== undefined) patch.loginPopupSettings = dto.loginPopupSettings;
       return this.prisma.systemSetting.update({ where: { id: setting.id }, data: patch });
     }
     return this.prisma.systemSetting.create({

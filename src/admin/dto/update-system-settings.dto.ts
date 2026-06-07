@@ -34,4 +34,13 @@ export class UpdateSystemSettingsDto {
   @IsOptional()
   @IsArray()
   wheelSegments?: { label: string; description: string }[];
+
+  @IsOptional()
+  loginPopupSettings?: {
+    title?: string;
+    description?: string;
+    benefits?: string[];
+    buttonText?: string;
+    buttonUrl?: string;
+  };
 }
