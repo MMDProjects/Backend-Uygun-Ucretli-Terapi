@@ -703,20 +703,21 @@ export class AdminService {
   }
 
   async getAdminUsers(search?: string) {
+    const roleFilter = { role: { in: ['ADMIN', 'UZMAN'] as const } };
     const where = search
       ? {
-          role: 'ADMIN' as const,
+          ...roleFilter,
           OR: [
             { firstName: { contains: search, mode: 'insensitive' as const } },
             { lastName: { contains: search, mode: 'insensitive' as const } },
             { email: { contains: search, mode: 'insensitive' as const } },
           ],
         }
-      : { role: 'ADMIN' as const };
+      : roleFilter;
 
     const data = await this.prisma.user.findMany({
       where,
-      select: { id: true, firstName: true, lastName: true, email: true, isActive: true, createdAt: true },
+      select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
     });
     return { data };
