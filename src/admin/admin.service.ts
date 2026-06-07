@@ -11,7 +11,7 @@ import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { UpsertSssDto } from './dto/upsert-sss.dto';
 import { UpsertPackageDto } from './dto/upsert-package.dto';
-import { RequestStatus, ApprovalStatus } from '@prisma/client';
+import { RequestStatus, ApprovalStatus, Prisma } from '@prisma/client';
 
 /** Bir haftanın (weekStart=Pazartesi) her günü için 3 blok slot üretir */
 function generateWeekSlots(expertProfileId: string, weekStart: Date) {
@@ -730,10 +730,11 @@ export class AdminService {
 
   async updateStaticPageContent(payload: { about: string; vision: string; mission: string; extraSections: object[] }) {
     const s = await this.prisma.systemSetting.findFirst();
+    const jsonPayload = payload as unknown as Prisma.InputJsonValue;
     if (s) {
       await this.prisma.systemSetting.update({
         where: { id: s.id },
-        data: { staticPageContent: payload as Record<string, unknown> },
+        data: { staticPageContent: jsonPayload },
       });
     } else {
       await this.prisma.systemSetting.create({
@@ -743,7 +744,7 @@ export class AdminService {
           standardPrice: 1500,
           discountedPrice: 1000,
           logoUrl: '/uploads/logo.png',
-          staticPageContent: payload as Record<string, unknown>,
+          staticPageContent: jsonPayload,
         },
       });
     }
