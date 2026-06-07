@@ -95,15 +95,28 @@ export class AuthService {
 
     // Kayıt anında tüm slotları müsait olarak oluştur
     if (user.expertProfile) {
-      const DEFAULT_SLOTS = [0, 1, 2, 3, 4, 5, 6].flatMap((day) => [
-        { dayOfWeek: day, startTime: '09:00', endTime: '12:00' },
-        { dayOfWeek: day, startTime: '12:00', endTime: '17:00' },
-        { dayOfWeek: day, startTime: '17:00', endTime: '21:00' },
-      ]);
-      await this.prisma.availability.createMany({
-        data: DEFAULT_SLOTS.map((s) => ({ expertProfileId: user.expertProfile!.id, ...s })),
-        skipDuplicates: true,
-      });
+      // İlk 4 hafta için tarih bazlı slot oluştur
+      const today = new Date();
+      const diff = today.getDay() === 0 ? 6 : today.getDay() - 1;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - diff);
+      monday.setHours(0, 0, 0, 0);
+      const profileId = user.expertProfile!.id;
+      const slots = Array.from({ length: 4 }, (_, w) => {
+        const weekStart = new Date(monday);
+        weekStart.setDate(monday.getDate() + w * 7);
+        return Array.from({ length: 7 }, (_, d) => {
+          const date = new Date(weekStart);
+          date.setDate(weekStart.getDate() + d);
+          date.setHours(0, 0, 0, 0);
+          return date;
+        }).flatMap((date) => [
+          { expertProfileId: profileId, date, startTime: '09:00', endTime: '12:00' },
+          { expertProfileId: profileId, date, startTime: '12:00', endTime: '17:00' },
+          { expertProfileId: profileId, date, startTime: '17:00', endTime: '21:00' },
+        ]);
+      }).flat();
+      await this.prisma.availability.createMany({ data: slots, skipDuplicates: true });
     }
 
     const tokens = this.generateTokens(user.id, user.email, user.role, {

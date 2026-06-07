@@ -11,7 +11,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
-import { AdminService } from './admin.service';
+import { AdminService, getThisMonday } from './admin.service';
 import { UpdateExpertStatusDto } from './dto/update-expert-status.dto';
 import { TogglePublishDto } from './dto/toggle-publish.dto';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
@@ -144,8 +144,12 @@ export class AdminController {
   }
 
   @Get('experts/:id/availabilities')
-  getExpertAvailabilities(@Param('id', ParseUUIDPipe) id: string) {
-    return this.adminService.getExpertAvailabilities(id);
+  getExpertAvailabilities(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('weekStart') weekStart?: string,
+  ) {
+    const ws = weekStart ? new Date(weekStart) : getThisMonday();
+    return this.adminService.getExpertAvailabilities(id, ws);
   }
 
   @Patch('availabilities/:id/block')

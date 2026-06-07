@@ -73,7 +73,7 @@ export class ExpertsService {
         tags: { select: { id: true, name: true } },
         availabilities: {
           where: { isBlockedByAdmin: false },
-          select: { dayOfWeek: true, startTime: true, endTime: true },
+          select: { date: true, startTime: true, endTime: true },
         },
         user: { select: { firstName: true, lastName: true } },
       },
@@ -157,7 +157,12 @@ export class ExpertsService {
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
     return this.prisma.availability.create({
-      data: { ...dto, expertProfileId: profile.id },
+      data: {
+        expertProfileId: profile.id,
+        date: new Date(dto.date),
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+      },
     });
   }
 
@@ -178,8 +183,13 @@ export class ExpertsService {
     });
     if (!profile) throw new NotFoundException('Uzman bulunamadı');
 
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
     return this.prisma.availability.findMany({
-      where: { expertProfileId: expertId, isBlockedByAdmin: false },
+      where: { expertProfileId: expertId, isBlockedByAdmin: false, date: { gte: now } },
+      orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+      take: 42,
     });
   }
 

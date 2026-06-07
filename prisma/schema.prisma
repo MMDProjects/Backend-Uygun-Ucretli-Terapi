@@ -153,12 +153,12 @@ model Availability {
   id               String        @id @default(uuid())
   expertProfileId  String
   expertProfile    ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
-  dayOfWeek        Int
+  date             DateTime
   startTime        String
   endTime          String
   isBlockedByAdmin Boolean       @default(false)
 
-  @@unique([expertProfileId, dayOfWeek, startTime])
+  @@unique([expertProfileId, date, startTime])
   @@map("availabilities")
 }
 
