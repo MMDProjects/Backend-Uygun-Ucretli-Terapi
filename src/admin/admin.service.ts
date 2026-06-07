@@ -627,11 +627,22 @@ export class AdminService {
     return this.prisma.test.findMany({ orderBy: { title: 'asc' } });
   }
 
+  private async uniqueSlug(base: string, excludeId?: string): Promise<string> {
+    let slug = base;
+    let counter = 1;
+    while (true) {
+      const existing = await this.prisma.test.findUnique({ where: { slug } });
+      if (!existing || existing.id === excludeId) return slug;
+      slug = `${base}-${counter++}`;
+    }
+  }
+
   async createTest(dto: { title: string; slug: string; description: string; isActive?: boolean; definition?: Record<string, unknown> }) {
+    const slug = await this.uniqueSlug(dto.slug);
     return this.prisma.test.create({
       data: {
         title: dto.title,
-        slug: dto.slug,
+        slug,
         description: dto.description,
         isActive: dto.isActive ?? true,
         ...(dto.definition !== undefined && { definition: dto.definition as any }),
@@ -642,11 +653,12 @@ export class AdminService {
   async updateTest(id: string, dto: { title: string; slug: string; description: string; isActive?: boolean; definition?: Record<string, unknown> }) {
     const test = await this.prisma.test.findUnique({ where: { id } });
     if (!test) throw new NotFoundException('Test bulunamadı');
+    const slug = await this.uniqueSlug(dto.slug, id);
     return this.prisma.test.update({
       where: { id },
       data: {
         title: dto.title,
-        slug: dto.slug,
+        slug,
         description: dto.description,
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         ...(dto.definition !== undefined && { definition: dto.definition as any }),
