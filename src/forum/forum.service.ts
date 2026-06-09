@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { AssignQuestionDto } from './dto/assign-question.dto';
@@ -113,6 +113,28 @@ export class ForumService {
     });
 
     return answer;
+  }
+
+  async getMyQuestions(userId: string) {
+    return this.prisma.forumQuestion.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, title: true, content: true, status: true, createdAt: true },
+    });
+  }
+
+  async deleteQuestion(userId: string, questionId: string) {
+    const q = await this.prisma.forumQuestion.findUnique({ where: { id: questionId } });
+    if (!q) throw new NotFoundException('Soru bulunamadı');
+    if (q.userId !== userId) throw new ForbiddenException('Bu soruyu silemezsiniz');
+    if (q.status !== 'ONAY_BEKLIYOR') throw new BadRequestException('Sadece onay bekleyen sorular silinebilir');
+    await this.prisma.forumQuestion.delete({ where: { id: questionId } });
+  }
+
+  async adminDeleteQuestion(questionId: string) {
+    const q = await this.prisma.forumQuestion.findUnique({ where: { id: questionId } });
+    if (!q) throw new NotFoundException('Soru bulunamadı');
+    await this.prisma.forumQuestion.delete({ where: { id: questionId } });
   }
 
   async approveAnswer(id: string) {

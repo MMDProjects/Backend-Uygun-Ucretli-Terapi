@@ -234,6 +234,11 @@ export class AdminController {
     return this.adminService.approveForumAnswer(id);
   }
 
+  @Delete('forum/questions/:id')
+  deleteForumQuestion(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.deleteForumQuestion(id);
+  }
+
   // Yorum yönetimi
   @Patch('comments/:id/approve')
   approveComment(@Param('id', ParseUUIDPipe) id: string) {

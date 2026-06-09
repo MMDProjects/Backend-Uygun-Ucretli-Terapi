@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ForumService } from './forum.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
@@ -38,6 +38,23 @@ export class ForumController {
   @ApiResponse({ status: 404, description: 'Soru bulunamadı veya henüz cevaplanmamış' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.forumService.findOnePublic(id);
+  }
+
+  @Roles('DANISAN')
+  @Get('my-questions')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Kendi sorularım', description: 'Danışanın sorduğu tüm sorular (tüm statüler).' })
+  getMyQuestions(@CurrentUser() user: User) {
+    return this.forumService.getMyQuestions(user.id);
+  }
+
+  @Roles('DANISAN')
+  @Delete('questions/:id')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Soruyu sil', description: 'Danışan sadece ONAY_BEKLIYOR statüsündeki kendi sorusunu silebilir.' })
+  @ApiParam({ name: 'id', description: 'Soru UUID' })
+  deleteQuestion(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.forumService.deleteQuestion(user.id, id);
   }
 
   @Roles('UZMAN')
