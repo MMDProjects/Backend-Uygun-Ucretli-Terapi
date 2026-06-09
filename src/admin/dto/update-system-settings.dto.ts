@@ -36,6 +36,10 @@ export class UpdateSystemSettingsDto {
   wheelSegments?: { label: string; description: string }[];
 
   @IsOptional()
+  @IsArray()
+  wheelWinnerIndices?: number[];
+
+  @IsOptional()
   loginPopupSettings?: {
     title?: string;
     description?: string;
