@@ -79,13 +79,6 @@ class ToggleTagDto {
   isActive: boolean;
 }
 
-class StaticPageContentUpdateDto {
-  about: string;
-  vision: string;
-  mission: string;
-  extraSections: object[];
-}
-
 class KvkkSectionDto {
   @IsString() id: string;
   @IsString() title: string;
@@ -394,17 +387,6 @@ export class AdminController {
   @Delete('tags/:id')
   deleteTag(@Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.deleteTag(id);
-  }
-
-  // Statik sayfa içerikleri
-  @Get('content/static-pages')
-  getStaticPageContent() {
-    return this.adminService.getStaticPageContent();
-  }
-
-  @Put('content/static-pages')
-  updateStaticPageContent(@Body() payload: StaticPageContentUpdateDto) {
-    return this.adminService.updateStaticPageContent(payload);
   }
 
   // KVKK içeriği

@@ -723,32 +723,4 @@ export class AdminService {
     return { data };
   }
 
-  async getStaticPageContent() {
-    const s = await this.prisma.systemSetting.findFirst();
-    const defaultContent = { about: '', vision: '', mission: '', extraSections: [] };
-    return { success: true, data: (s?.staticPageContent ?? defaultContent) };
-  }
-
-  async updateStaticPageContent(payload: { about: string; vision: string; mission: string; extraSections: object[] }) {
-    const s = await this.prisma.systemSetting.findFirst();
-    const jsonPayload = payload as unknown as Prisma.InputJsonValue;
-    if (s) {
-      await this.prisma.systemSetting.update({
-        where: { id: s.id },
-        data: { staticPageContent: jsonPayload },
-      });
-    } else {
-      await this.prisma.systemSetting.create({
-        data: {
-          whatsappNumber: '+905000000000',
-          instagramUrl: 'https://instagram.com/psikodanismanlik',
-          standardPrice: 1500,
-          discountedPrice: 1000,
-          logoUrl: '/uploads/logo.png',
-          staticPageContent: jsonPayload,
-        },
-      });
-    }
-    return { success: true, data: payload, message: 'İçerik kaydedildi.' };
-  }
 }
