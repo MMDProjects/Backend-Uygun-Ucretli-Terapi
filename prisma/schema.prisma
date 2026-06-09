@@ -362,6 +362,7 @@ model SystemSetting {
   videoUrl          String?
   announcementItems    Json     @default("[]")
   wheelSegments        Json     @default("[]")
+  wheelWinnerIndices   Json     @default("[]")
   loginPopupSettings   Json     @default("{}")
   staticPageContent    Json?
   kvkkContent          Json?

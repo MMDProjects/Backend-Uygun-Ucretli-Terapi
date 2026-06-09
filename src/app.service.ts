@@ -93,6 +93,9 @@ export class AppService {
     const rawSegments = (s?.wheelSegments as { label: string; description: string }[] | null) ?? [];
     const segments = rawSegments.length >= 2 ? rawSegments : DEFAULT_WHEEL_SEGMENTS;
 
+    const rawWinners = (s?.wheelWinnerIndices as number[] | null) ?? [];
+    const winnerIndices = rawWinners.filter((i) => i >= 0 && i < segments.length);
+
     if (s && raw.length === 0) {
       await this.prisma.systemSetting.update({
         where: { id: s.id },
@@ -112,6 +115,7 @@ export class AppService {
       videoUrl: s?.videoUrl ?? null,
       announcementItems: items,
       wheelSegments: segments,
+      wheelWinnerIndices: winnerIndices,
       loginPopupSettings,
     };
   }
