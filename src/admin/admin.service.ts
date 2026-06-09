@@ -486,6 +486,10 @@ export class AdminService {
     return result;
   }
 
+  async deleteForumQuestion(id: string) {
+    return this.forumService.adminDeleteQuestion(id);
+  }
+
   async approveComment(id: string) {
     const comment = await this.prisma.comment.findUnique({
       where: { id },
