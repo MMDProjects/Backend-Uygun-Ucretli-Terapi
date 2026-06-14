@@ -19,7 +19,7 @@ export class BlogsService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        select: { id: true, title: true, slug: true, content: true, coverImageUrl: true, createdAt: true, expertProfile: { select: { title: true, user: { select: { firstName: true, lastName: true } } } } },
+        select: { id: true, title: true, slug: true, content: true, coverImageUrl: true, authorName: true, createdAt: true, expertProfile: { select: { title: true, user: { select: { firstName: true, lastName: true } } } } },
       }),
       this.prisma.blog.count({ where: { status: 'YAYINDA' } }),
     ]);
@@ -40,7 +40,12 @@ export class BlogsService {
     if (!profile) throw new ForbiddenException('Uzman profili bulunamadı');
 
     return this.prisma.blog.create({
-      data: { ...dto, expertProfileId: profile.id, status: 'TASLAK' },
+      data: {
+        ...dto,
+        expertProfileId: profile.id,
+        authorName: `${user.firstName} ${user.lastName}`.trim(),
+        status: 'TASLAK',
+      },
     });
   }
 
