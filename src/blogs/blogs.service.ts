@@ -52,6 +52,7 @@ export class BlogsService {
   async update(user: User, id: string, dto: Partial<CreateBlogDto>) {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
+    if (blog.authorName === 'Sistem') throw new ForbiddenException('Admin tarafından oluşturulan bloglar düzenlenemez');
     if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     // Yayındaki blog: değişiklikler pending'e gider, eski içerik yayında kalır
@@ -77,6 +78,7 @@ export class BlogsService {
   async delete(user: User, id: string) {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
+    if (blog.authorName === 'Sistem') throw new ForbiddenException('Admin tarafından oluşturulan bloglar silinemez');
     if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     await this.prisma.blog.delete({ where: { id } });
@@ -86,12 +88,16 @@ export class BlogsService {
   async getMyBlogs(userId: string) {
     const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
-    return this.prisma.blog.findMany({ where: { expertProfileId: profile.id }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.blog.findMany({
+      where: { expertProfileId: profile.id, NOT: { authorName: 'Sistem' } },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async uploadCover(user: User, id: string, file: Express.Multer.File): Promise<{ coverImageUrl: string }> {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
+    if (blog.authorName === 'Sistem') throw new ForbiddenException('Admin tarafından oluşturulan bloglar düzenlenemez');
     if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     const url = await this.storage.upload('blog-covers', file, user.id);
