@@ -9,7 +9,10 @@ import {
   Param,
   Query,
   ParseUUIDPipe,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { AdminService, getThisMonday } from './admin.service';
 import { AppService } from '../app.service';
@@ -22,7 +25,8 @@ import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AssignQuestionDto } from '../forum/dto/assign-question.dto';
 import { RequestStatus, ApprovalStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MinLength, IsArray, IsBoolean, IsObject } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MinLength, IsArray, IsBoolean, IsObject, IsNumber, IsInt, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 
 class UpdateBlogStatusDto {
   @IsEnum(ApprovalStatus)
@@ -55,6 +59,10 @@ class UpdateRequestStatusDto {
 }
 
 class PriorityDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(999999)
   priorityScore: number;
 }
 
@@ -72,10 +80,13 @@ class BulkBlockDto {
 }
 
 class CreateTagDto {
+  @IsString()
+  @MinLength(1)
   name: string;
 }
 
 class ToggleTagDto {
+  @IsBoolean()
   isActive: boolean;
 }
 
@@ -203,6 +214,15 @@ export class AdminController {
     @Body() dto: UpdateBlogContentDto,
   ) {
     return this.adminService.updateBlogContent(id, dto);
+  }
+
+  @Post('blogs/:id/cover')
+  @UseInterceptors(FileInterceptor('cover', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  uploadAdminBlogCover(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.adminService.uploadAdminBlogCover(id, file);
   }
 
   @Delete('blogs/:id')

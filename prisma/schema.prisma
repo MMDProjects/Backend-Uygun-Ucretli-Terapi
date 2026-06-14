@@ -44,6 +44,10 @@ enum SssPage {
   GENEL
   TESTLER
   PAKETLER
+  RANDEVU
+  ODEME
+  UZMAN
+  GIZLILIK
 }
 
 enum NotificationType {

@@ -276,6 +276,17 @@ export class AdminService {
     return this.prisma.blog.update({ where: { id }, data: dto });
   }
 
+  async uploadAdminBlogCover(id: string, file: Express.Multer.File) {
+    const blog = await this.prisma.blog.findUnique({ where: { id } });
+    if (!blog) throw new NotFoundException('Blog bulunamadı');
+    if (!file) throw new BadRequestException('Dosya gönderilmedi');
+    if (blog.coverImageUrl) {
+      await this.storage.deleteByUrl(blog.coverImageUrl);
+    }
+    const url = await this.storage.upload('blog-covers', file, id);
+    return this.prisma.blog.update({ where: { id }, data: { coverImageUrl: url } });
+  }
+
   async deleteBlog(id: string) {
     const blog = await this.prisma.blog.findUnique({ where: { id } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
