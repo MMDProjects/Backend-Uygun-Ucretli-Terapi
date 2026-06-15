@@ -17,6 +17,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestj
 import { AdminService, getThisMonday } from './admin.service';
 import { AppService } from '../app.service';
 import { UpdateExpertStatusDto } from './dto/update-expert-status.dto';
+import { CreateExpertByAdminDto } from './dto/create-expert-by-admin.dto';
 import { TogglePublishDto } from './dto/toggle-publish.dto';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
@@ -125,6 +126,12 @@ export class AdminController {
   }
 
   // Uzman yönetimi
+  @Post('experts')
+  @ApiOperation({ summary: 'Admin tarafından uzman hesabı oluştur' })
+  createExpertByAdmin(@Body() dto: CreateExpertByAdminDto) {
+    return this.adminService.createExpertByAdmin(dto);
+  }
+
   @Get('experts')
   getExperts(@Query('page') page = '1', @Query('limit') limit = '20') {
     return this.adminService.getExperts(+page, +limit);
@@ -158,6 +165,12 @@ export class AdminController {
     @Body() dto: { standardPrice: number | null; discountedPrice: number | null },
   ) {
     return this.adminService.updateExpertPricing(id, dto.standardPrice, dto.discountedPrice);
+  }
+
+  @Delete('experts/:id')
+  @ApiOperation({ summary: 'Uzman ve ilişkili tüm verileri sil' })
+  deleteExpert(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.deleteExpert(id);
   }
 
   @Patch('experts/:id/active')

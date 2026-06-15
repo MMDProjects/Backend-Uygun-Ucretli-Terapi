@@ -213,6 +213,30 @@ export class MailService {
     await this.send(email, name, 'Platform Yönetiminden Bildirim', this.buildEmailHtml('Yönetimden Mesajınız Var', body));
   }
 
+  // ─── Admin Tarafından Oluşturulan Uzman Hoş Geldiniz ─────────────────────
+
+  async sendWelcomeExpertByAdmin(email: string, name: string, password: string) {
+    const loginUrl = `${this.frontendUrl}/uzman/giris`;
+    const body = `
+      <p style="color:#1a1a1a;line-height:1.7">Merhaba <strong>${name}</strong>,</p>
+      <p style="color:#4a4a4a;line-height:1.7">
+        Platform yönetimi tarafından uzman hesabınız oluşturuldu.
+        Aşağıdaki bilgilerle giriş yapabilir ve profilinizi tamamlayabilirsiniz.
+      </p>
+      <div style="background:#e6f0ee;border-radius:8px;padding:16px 20px;margin:20px 0">
+        <p style="margin:0 0 8px;font-size:13px;color:#4a4a4a">Giriş bilgileriniz:</p>
+        <p style="margin:0 0 4px"><strong>E-posta:</strong> ${email}</p>
+        <p style="margin:0"><strong>Şifre:</strong> ${password}</p>
+      </div>
+      <p style="color:#4a4a4a;font-size:13px;line-height:1.7">
+        Güvenliğiniz için giriş yaptıktan sonra şifrenizi değiştirmenizi öneririz.
+        Profilinizi tamamladıktan sonra inceleme için admin onayına gönderilecektir.
+      </p>
+      ${this.ctaButton('Giriş Yap ve Profilimi Tamamla', loginUrl)}
+    `;
+    await this.send(email, name, 'Uzman hesabınız oluşturuldu — Platforma hoş geldiniz!', this.buildEmailHtml('Hesabınız Hazır', body));
+  }
+
   // ─── Uzman Profil Red ─────────────────────────────────────────────────────
 
   async sendExpertProfileRejected(email: string, name: string, adminNote: string) {
