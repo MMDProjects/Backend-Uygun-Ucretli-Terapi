@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -7,6 +8,7 @@ import { CommentsService } from '../comments/comments.service';
 import { ExpertRequestsService } from '../requests/expert-requests.service';
 import { ForumService } from '../forum/forum.service';
 import { UpdateExpertStatusDto } from './dto/update-expert-status.dto';
+import { CreateExpertByAdminDto } from './dto/create-expert-by-admin.dto';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { UpsertSssDto } from './dto/upsert-sss.dto';
@@ -70,6 +72,7 @@ export class AdminService {
 
     const [
       pendingExperts,
+      pendingProfileUpdates,
       pendingBlogs,
       pendingComments,
       pendingQuestions,
@@ -77,7 +80,8 @@ export class AdminService {
       pendingForumAnswers,
       newTestResults,
     ] = await this.prisma.$transaction([
-      this.prisma.expertProfile.count({ where: { status: 'ONAY_BEKLIYOR' } }),
+      this.prisma.expertProfile.count({ where: { status: 'ONAY_BEKLIYOR', isPublished: false } }),
+      this.prisma.expertProfile.count({ where: { status: 'ONAY_BEKLIYOR', isPublished: true } }),
       this.prisma.blog.count({ where: { status: 'ONAY_BEKLIYOR' } }),
       this.prisma.comment.count({ where: { isApproved: false } }),
       this.prisma.forumQuestion.count({ where: { status: 'ONAY_BEKLIYOR' } }),
@@ -88,6 +92,7 @@ export class AdminService {
 
     return {
       pendingExperts,
+      pendingProfileUpdates,
       pendingBlogs,
       pendingComments,
       pendingQuestions,
@@ -200,6 +205,16 @@ export class AdminService {
       return generateWeekSlots(expertProfileId, weekStart);
     }).flat();
     await this.prisma.availability.createMany({ data: slots, skipDuplicates: true });
+  }
+
+  async deleteExpert(id: string) {
+    const expert = await this.prisma.expertProfile.findUnique({
+      where: { id },
+      select: { userId: true },
+    });
+    if (!expert) throw new NotFoundException('Uzman bulunamadı');
+    await this.prisma.user.delete({ where: { id: expert.userId } });
+    return { message: 'Uzman silindi' };
   }
 
   async updateExpertPriority(id: string, priorityScore: number) {
@@ -716,6 +731,43 @@ export class AdminService {
       this.prisma.testResult.count({ where }),
     ]);
     return { data, total, page, limit };
+  }
+
+  async createExpertByAdmin(dto: CreateExpertByAdminDto) {
+    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (existing) throw new ConflictException('Bu e-posta adresi zaten kayıtlı');
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    const user = await this.prisma.user.create({
+      data: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        phone: null,
+        passwordHash,
+        role: 'UZMAN',
+        isActive: true,
+        expertProfile: {
+          create: {
+            status: 'ONAY_BEKLIYOR',
+            isPublished: false,
+            createdByAdmin: true,
+          },
+        },
+      },
+      include: { expertProfile: true },
+    });
+
+    this.mail.sendWelcomeExpertByAdmin(user.email, user.firstName, dto.password).catch(() => {});
+
+    return {
+      id: user.expertProfile!.id,
+      userId: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    };
   }
 
   async getAdminUsers(search?: string) {
