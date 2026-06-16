@@ -26,7 +26,8 @@ export class MailService {
   }
 
   private get frontendUrl(): string {
-    return (this.config.get('FRONTEND_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
+    const raw = this.config.get('FRONTEND_URL') ?? 'http://localhost:3000';
+    return raw.split(',')[0].trim().replace(/\/$/, '');
   }
 
   private buildEmailHtml(title: string, body: string): string {
