@@ -47,7 +47,7 @@ export class BlogsService {
   async update(user: User, id: string, dto: Partial<CreateBlogDto>) {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
-    if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
+    if (!blog.expertProfile || blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     // Yayındaki blog: değişiklikler pending'e gider, eski içerik yayında kalır
     if (blog.status === 'YAYINDA') {
@@ -72,7 +72,7 @@ export class BlogsService {
   async delete(user: User, id: string) {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
-    if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
+    if (!blog.expertProfile || blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     await this.prisma.blog.delete({ where: { id } });
     return { message: 'Blog silindi' };
@@ -87,7 +87,7 @@ export class BlogsService {
   async uploadCover(user: User, id: string, file: Express.Multer.File): Promise<{ coverImageUrl: string }> {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
-    if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
+    if (!blog.expertProfile || blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     const url = await this.storage.upload('blog-covers', file, user.id);
 
