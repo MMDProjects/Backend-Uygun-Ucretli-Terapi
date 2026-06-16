@@ -334,7 +334,7 @@ export class AdminService {
 
     await this.prisma.blog.update({ where: { id }, data: updateData });
 
-    if (status === 'YAYINDA') {
+    if (status === 'YAYINDA' && blog.expertProfile) {
       await this.notificationsService.send(
         blog.expertProfile.userId,
         'INFO',
@@ -343,7 +343,7 @@ export class AdminService {
       const u = await this.prisma.user.findUnique({ where: { id: blog.expertProfile.userId }, select: { email: true, firstName: true } });
       if (u) this.mail.sendBlogApproved(u.email, u.firstName, blog.title).catch(() => {});
     }
-    if (status === 'REDDEDILDI') {
+    if (status === 'REDDEDILDI' && blog.expertProfile) {
       await this.notificationsService.send(
         blog.expertProfile.userId,
         'WARNING',

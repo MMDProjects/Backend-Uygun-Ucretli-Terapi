@@ -53,7 +53,7 @@ export class BlogsService {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
     if (blog.authorName === 'Editör') throw new ForbiddenException('Admin tarafından oluşturulan bloglar düzenlenemez');
-    if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
+    if (!blog.expertProfile || blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     // Yayındaki blog: değişiklikler pending'e gider, eski içerik yayında kalır
     if (blog.status === 'YAYINDA') {
@@ -79,7 +79,7 @@ export class BlogsService {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
     if (blog.authorName === 'Editör') throw new ForbiddenException('Admin tarafından oluşturulan bloglar silinemez');
-    if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
+    if (!blog.expertProfile || blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     await this.prisma.blog.delete({ where: { id } });
     return { message: 'Blog silindi' };
@@ -98,7 +98,7 @@ export class BlogsService {
     const blog = await this.prisma.blog.findUnique({ where: { id }, include: { expertProfile: true } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
     if (blog.authorName === 'Editör') throw new ForbiddenException('Admin tarafından oluşturulan bloglar düzenlenemez');
-    if (blog.expertProfile.userId !== user.id) throw new ForbiddenException();
+    if (!blog.expertProfile || blog.expertProfile.userId !== user.id) throw new ForbiddenException();
 
     const url = await this.storage.upload('blog-covers', file, user.id);
 
