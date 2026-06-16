@@ -266,12 +266,6 @@ export class AdminService {
   }
 
   async createAdminBlog(dto: { title: string; slug: string; content: string; authorName: string; coverImageUrl?: string }) {
-    // Admin blogları için sistem uzman profilini bul (öncelikli: en yüksek priorityScore)
-    const profile = await this.prisma.expertProfile.findFirst({
-      orderBy: { priorityScore: 'desc' },
-    });
-    if (!profile) throw new BadRequestException('Blog yazabilmek için sistemde en az bir uzman profili olmalıdır.');
-
     return this.prisma.blog.create({
       data: {
         title: dto.title,
@@ -280,7 +274,7 @@ export class AdminService {
         authorName: dto.authorName,
         coverImageUrl: dto.coverImageUrl ?? null,
         status: 'YAYINDA',
-        expertProfileId: profile.id,
+        expertProfileId: null,
       },
     });
   }

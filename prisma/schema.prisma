@@ -251,8 +251,8 @@ model TestResult {
 
 model Blog {
   id              String         @id @default(uuid())
-  expertProfileId String
-  expertProfile   ExpertProfile  @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  expertProfileId String?
+  expertProfile   ExpertProfile?  @relation(fields: [expertProfileId], references: [id], onDelete: SetNull)
   title                String
   slug                 String         @unique
   content              String         @db.Text
