@@ -1,0 +1,1 @@
+ALTER TABLE "expert_profiles" ADD COLUMN IF NOT EXISTS "createdByAdmin" BOOLEAN NOT NULL DEFAULT false;
