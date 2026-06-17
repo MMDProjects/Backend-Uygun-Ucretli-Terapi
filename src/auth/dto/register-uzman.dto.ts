@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, IsBoolean, Equals, Matches, IsOptional, IsArray, IsUUID } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsBoolean, Equals, Matches, IsOptional, IsArray, IsUUID, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class RegisterUzmanDto {
@@ -33,6 +33,12 @@ export class RegisterUzmanDto {
   @IsBoolean()
   @Equals(true, { message: 'KVKK onayı zorunludur' })
   kvkkConsent: boolean;
+
+  @ApiPropertyOptional({ example: 'Deneyimli klinik psikolog...', description: 'Uzman biyografisi (80–150 kelime)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  bio?: string;
 
   @ApiPropertyOptional({ type: [String], example: ['uuid-1', 'uuid-2'], description: 'Seçilen etiket UUID listesi (opsiyonel)' })
   @IsOptional()

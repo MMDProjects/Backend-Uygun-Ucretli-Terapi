@@ -81,6 +81,7 @@ export class AuthService {
         expertProfile: {
           create: {
             title: dto.title,
+            bio: dto.bio ?? '',
             certificateUrl,
             cvUrl,
             status: 'ONAY_BEKLIYOR',
