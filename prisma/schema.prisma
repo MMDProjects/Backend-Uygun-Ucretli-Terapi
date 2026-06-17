@@ -123,6 +123,14 @@ model ExpertProfile {
   pendingCertificateUrl String?
   pendingCvUrl          String?
   pendingTagIds         String?
+  city                  String?
+  district              String?
+  age                   Int?
+  gender                String?
+  website               String?
+  instagram             String?
+  experienceDuration    String?
+  registrationCertificates String? @db.Text
   priorityScore   Int            @default(1)
   rating          Float          @default(5.0)
   standardPrice   Decimal?       @db.Decimal(10, 2)

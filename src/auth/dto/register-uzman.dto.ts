@@ -52,4 +52,16 @@ export class RegisterUzmanDto {
   @IsArray()
   @IsUUID('all', { each: true })
   tagIds?: string[];
+
+  @IsOptional() @IsString() city?: string;
+  @IsOptional() @IsString() district?: string;
+  @IsOptional() @IsString() gender?: string;
+  @IsOptional() @IsString() website?: string;
+  @IsOptional() @IsString() instagram?: string;
+  @IsOptional() @IsString() experienceDuration?: string;
+  @IsOptional() @IsString() registrationCertificates?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
+  age?: number;
 }

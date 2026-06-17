@@ -1,0 +1,9 @@
+ALTER TABLE "expert_profiles"
+  ADD COLUMN IF NOT EXISTS "city" TEXT,
+  ADD COLUMN IF NOT EXISTS "district" TEXT,
+  ADD COLUMN IF NOT EXISTS "age" INTEGER,
+  ADD COLUMN IF NOT EXISTS "gender" TEXT,
+  ADD COLUMN IF NOT EXISTS "website" TEXT,
+  ADD COLUMN IF NOT EXISTS "instagram" TEXT,
+  ADD COLUMN IF NOT EXISTS "experienceDuration" TEXT,
+  ADD COLUMN IF NOT EXISTS "registrationCertificates" TEXT;
