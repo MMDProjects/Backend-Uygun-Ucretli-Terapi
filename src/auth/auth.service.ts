@@ -222,15 +222,15 @@ export class AuthService {
   ) {
     const payload = { sub: userId, email, role };
 
-    const accessToken = this.jwt.sign(payload, {
-      secret: this.config.get('JWT_ACCESS_SECRET'),
-      expiresIn: this.config.get('JWT_ACCESS_EXPIRES'),
-    });
+    const accessToken = this.jwt.sign(
+      { ...payload, jti: crypto.randomUUID() },
+      { secret: this.config.get('JWT_ACCESS_SECRET'), expiresIn: this.config.get('JWT_ACCESS_EXPIRES') },
+    );
 
-    const refreshToken = this.jwt.sign(payload, {
-      secret: this.config.get('JWT_REFRESH_SECRET'),
-      expiresIn: this.config.get('JWT_REFRESH_EXPIRES'),
-    });
+    const refreshToken = this.jwt.sign(
+      { ...payload, jti: crypto.randomUUID() },
+      { secret: this.config.get('JWT_REFRESH_SECRET'), expiresIn: this.config.get('JWT_REFRESH_EXPIRES') },
+    );
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
