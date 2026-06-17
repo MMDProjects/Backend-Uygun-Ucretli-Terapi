@@ -82,6 +82,7 @@ export class AuthService {
           create: {
             title: dto.title,
             bio: dto.bio ?? '',
+            education: dto.education ?? '',
             certificateUrl,
             cvUrl,
             status: 'ONAY_BEKLIYOR',

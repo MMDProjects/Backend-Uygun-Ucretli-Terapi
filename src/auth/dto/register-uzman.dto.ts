@@ -40,6 +40,12 @@ export class RegisterUzmanDto {
   @MaxLength(2000)
   bio?: string;
 
+  @ApiPropertyOptional({ example: 'Lisans: Hacettepe Üniversitesi - Psikoloji (2018)', description: 'Eğitim bilgisi' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  education?: string;
+
   @ApiPropertyOptional({ type: [String], example: ['uuid-1', 'uuid-2'], description: 'Seçilen etiket UUID listesi (opsiyonel)' })
   @IsOptional()
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
