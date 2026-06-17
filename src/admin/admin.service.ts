@@ -146,10 +146,15 @@ export class AdminService {
 
     if (dto.status === 'YAYINDA') {
       data.isPublished = true;
-      const isRevision = !!(expert.pendingBio || expert.pendingTitle || expert.pendingEducation || expert.pendingCertificateUrl || expert.pendingCvUrl);
+      const isRevision = !!(expert.pendingBio || expert.pendingTitle || expert.pendingEducation || expert.pendingTagIds || expert.pendingCertificateUrl || expert.pendingCvUrl);
       if (expert.pendingBio) { data.bio = expert.pendingBio; data.pendingBio = null; }
       if (expert.pendingTitle) { data.title = expert.pendingTitle; data.pendingTitle = null; }
       if (expert.pendingEducation) { data.education = expert.pendingEducation; data.pendingEducation = null; }
+      if (expert.pendingTagIds) {
+        const tagIds: string[] = JSON.parse(expert.pendingTagIds);
+        data.tags = { set: tagIds.map((tid) => ({ id: tid })) };
+        data.pendingTagIds = null;
+      }
       if (expert.pendingCertificateUrl) {
         if (expert.certificateUrl) await this.storage.deleteByUrl(expert.certificateUrl);
         data.certificateUrl = expert.pendingCertificateUrl;

@@ -122,6 +122,7 @@ model ExpertProfile {
   cvUrl                 String         @default("")
   pendingCertificateUrl String?
   pendingCvUrl          String?
+  pendingTagIds         String?
   priorityScore   Int            @default(1)
   rating          Float          @default(5.0)
   standardPrice   Decimal?       @db.Decimal(10, 2)
