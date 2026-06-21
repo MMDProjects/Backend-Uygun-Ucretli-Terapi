@@ -250,7 +250,10 @@ export class AdminService {
   async toggleExpertPublish(id: string, isPublished: boolean) {
     const expert = await this.prisma.expertProfile.findUnique({ where: { id } });
     if (!expert) throw new NotFoundException('Profil bulunamadı');
-    if (isPublished && expert.status !== 'YAYINDA') {
+    // Yayına ALMA (false → true) yalnızca bir kez onaylanmış uzmanlar için geçerlidir.
+    // Zaten yayında olan bir uzman revize göndermiş olsa bile (REVIZE_GONDERILDI veya ONAY_BEKLIYOR)
+    // isPublished toggle'ı çalışmaya devam etmeli; sadece ilk kez yayına alma engellenir.
+    if (isPublished && !expert.isPublished && expert.status !== 'YAYINDA') {
       throw new BadRequestException('Yalnızca YAYINDA statüsündeki uzmanlar yayına alınabilir');
     }
     return this.prisma.expertProfile.update({ where: { id }, data: { isPublished } });
