@@ -67,7 +67,7 @@ export class AdminService {
       newTestResults,
     ] = await this.prisma.$transaction([
       this.prisma.expertProfile.count({ where: { status: 'ONAY_BEKLIYOR', isPublished: false } }),
-      this.prisma.expertProfile.count({ where: { status: 'REVIZE_GONDERILDI', isPublished: true } }),
+      this.prisma.expertProfile.count({ where: { status: { in: ['REVIZE_GONDERILDI', 'PROFIL_GUNCELLENDI'] } } }),
       this.prisma.blog.count({ where: { status: 'ONAY_BEKLIYOR' } }),
       this.prisma.comment.count({ where: { isApproved: false } }),
       this.prisma.forumQuestion.count({ where: { status: 'ONAY_BEKLIYOR' } }),

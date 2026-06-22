@@ -117,7 +117,7 @@ export class ExpertsService {
       // Yayında olan uzman güncelliyorsa REVIZE_GONDERILDI → "Profil Onayları" kuyruğuna düşer.
       // Henüz onaylanmamış (isPublished: false) uzman güncelliyorsa ONAY_BEKLIYOR'da kalır
       // → "Yeni Başvurular" kuyruğundan çıkmaması için status değiştirilmez.
-      const newStatus = profile.isPublished ? 'REVIZE_GONDERILDI' : 'ONAY_BEKLIYOR';
+      const newStatus = profile.isPublished ? 'REVIZE_GONDERILDI' : 'PROFIL_GUNCELLENDI';
       await this.prisma.expertProfile.update({
         where: { userId: user.id },
         data: {
