@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ApprovalStatus" ADD VALUE 'PROFIL_GUNCELLENDI';
