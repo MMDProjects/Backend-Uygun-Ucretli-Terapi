@@ -100,8 +100,10 @@ export class ExpertsService {
       directUpdate.avatarUrl = await this.storage.upload('avatars', avatarFile, user.id);
     }
 
-    // Admin onayına giden alanlar: bio, title, education, tags, certificateUrl, cvUrl
+    // Admin onayına giden alanlar: bio, title, education, tags, certificateUrl, cvUrl, firstName, lastName
     const reviewUpdate: Record<string, unknown> = {};
+    if (dto.firstName !== undefined) reviewUpdate.pendingFirstName = dto.firstName;
+    if (dto.lastName !== undefined) reviewUpdate.pendingLastName = dto.lastName;
     if (dto.bio !== undefined) reviewUpdate.pendingBio = dto.bio;
     if (dto.title !== undefined) reviewUpdate.pendingTitle = dto.title;
     if (dto.education !== undefined) reviewUpdate.pendingEducation = dto.education;
@@ -137,7 +139,11 @@ export class ExpertsService {
   async getMyProfile(userId: string) {
     const profile = await this.prisma.expertProfile.findUnique({
       where: { userId },
-      include: { tags: true, availabilities: true },
+      include: {
+        tags: true,
+        availabilities: true,
+        user: { select: { firstName: true, lastName: true } },
+      },
     });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
     return profile;

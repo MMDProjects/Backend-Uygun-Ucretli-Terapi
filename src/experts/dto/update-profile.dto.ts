@@ -3,6 +3,16 @@ import { IsString, IsOptional, IsArray, ArrayMinSize, ArrayMaxSize, IsUUID } fro
 import { WordCount } from '../../common/validators/word-count.validator';
 
 export class UpdateProfileDto {
+  @ApiPropertyOptional({ example: 'Ali' })
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @ApiPropertyOptional({ example: 'Yılmaz' })
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
   @ApiPropertyOptional({ example: 'Uzman Klinik Psikolog' })
   @IsOptional()
   @IsString()

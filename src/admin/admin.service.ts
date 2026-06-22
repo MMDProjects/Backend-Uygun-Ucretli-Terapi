@@ -146,7 +146,15 @@ export class AdminService {
 
     if (dto.status === 'YAYINDA') {
       data.isPublished = true;
-      const isRevision = !!(expert.pendingBio || expert.pendingTitle || expert.pendingEducation || expert.pendingTagIds || expert.pendingCertificateUrl || expert.pendingCvUrl);
+      const pendingFirst = (expert as Record<string, unknown>).pendingFirstName as string | null | undefined;
+      const pendingLast = (expert as Record<string, unknown>).pendingLastName as string | null | undefined;
+      const isRevision = !!(expert.pendingBio || expert.pendingTitle || expert.pendingEducation || expert.pendingTagIds || expert.pendingCertificateUrl || expert.pendingCvUrl || pendingFirst || pendingLast);
+      if (pendingFirst || pendingLast) {
+        const nameUpdate: Record<string, string> = {};
+        if (pendingFirst) { nameUpdate.firstName = pendingFirst; data.pendingFirstName = null; }
+        if (pendingLast) { nameUpdate.lastName = pendingLast; data.pendingLastName = null; }
+        await this.prisma.user.update({ where: { id: expert.userId }, data: nameUpdate });
+      }
       if (expert.pendingBio) { data.bio = expert.pendingBio; data.pendingBio = null; }
       if (expert.pendingTitle) { data.title = expert.pendingTitle; data.pendingTitle = null; }
       if (expert.pendingEducation) { data.education = expert.pendingEducation; data.pendingEducation = null; }
@@ -181,6 +189,8 @@ export class AdminService {
     if (dto.status === 'REDDEDILDI') {
       if (expert.pendingCertificateUrl) await this.storage.deleteByUrl(expert.pendingCertificateUrl);
       if (expert.pendingCvUrl) await this.storage.deleteByUrl(expert.pendingCvUrl);
+      data.pendingFirstName = null;
+      data.pendingLastName = null;
       data.pendingBio = null;
       data.pendingTitle = null;
       data.pendingEducation = null;
