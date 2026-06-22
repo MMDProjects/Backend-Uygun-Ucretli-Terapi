@@ -15,20 +15,6 @@ import { UpsertSssDto } from './dto/upsert-sss.dto';
 import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { RequestStatus, ApprovalStatus, Prisma, Role } from '@prisma/client';
 
-/** Bir haftanın (weekStart=Pazartesi) her günü için 3 blok slot üretir */
-function generateWeekSlots(expertProfileId: string, weekStart: Date) {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart);
-    d.setDate(weekStart.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }).flatMap((date) => [
-    { expertProfileId, date, startTime: '09:00', endTime: '12:00' },
-    { expertProfileId, date, startTime: '12:00', endTime: '17:00' },
-    { expertProfileId, date, startTime: '17:00', endTime: '21:00' },
-  ]);
-}
-
 /** Bugünün haftasının Pazartesisini döner */
 export function getThisMonday(): Date {
   const today = new Date();
@@ -208,18 +194,7 @@ export class AdminService {
     return this.prisma.expertProfile.update({ where: { id }, data });
   }
 
-  async createDefaultAvailabilitiesIfEmpty(expertProfileId: string) {
-    const existing = await this.prisma.availability.count({ where: { expertProfileId } });
-    if (existing > 0) return;
-    // İlk 4 haftayı oluştur
-    const monday = getThisMonday();
-    const slots = Array.from({ length: 4 }, (_, w) => {
-      const weekStart = new Date(monday);
-      weekStart.setDate(monday.getDate() + w * 7);
-      return generateWeekSlots(expertProfileId, weekStart);
-    }).flat();
-    await this.prisma.availability.createMany({ data: slots, skipDuplicates: true });
-  }
+
 
   async deleteExpert(id: string) {
     const expert = await this.prisma.expertProfile.findUnique({
@@ -555,15 +530,6 @@ export class AdminService {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
     weekEnd.setHours(23, 59, 59, 999);
-
-    // Bu hafta için kayıt yoksa otomatik oluştur
-    const count = await this.prisma.availability.count({
-      where: { expertProfileId: expertId, date: { gte: weekStart, lte: weekEnd } },
-    });
-    if (count === 0) {
-      const slots = generateWeekSlots(expertId, weekStart);
-      await this.prisma.availability.createMany({ data: slots, skipDuplicates: true });
-    }
 
     return this.prisma.availability.findMany({
       where: { expertProfileId: expertId, date: { gte: weekStart, lte: weekEnd } },
