@@ -173,7 +173,6 @@ export class AdminService {
         data.cvUrl = expert.pendingCvUrl;
         data.pendingCvUrl = null;
       }
-      await this.createDefaultAvailabilitiesIfEmpty(id);
       await this.notificationsService.send(
         expert.userId,
         'INFO',
