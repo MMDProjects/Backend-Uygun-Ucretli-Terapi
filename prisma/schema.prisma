@@ -124,6 +124,7 @@ model ExpertProfile {
   pendingCertificateUrl String?
   pendingCvUrl          String?
   pendingTagIds         String?
+  pendingAvatarUrl      String?
   pendingFirstName      String?
   pendingLastName       String?
   city                  String?

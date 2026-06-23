@@ -93,15 +93,16 @@ export class ExpertsService {
     const profile = await this.prisma.expertProfile.findUnique({ where: { userId: user.id } });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
-    // Direkt güncellenen alanlar (admin onayı gerekmez): avatar
     const directUpdate: Record<string, unknown> = {};
-    if (avatarFile) {
-      if (profile.avatarUrl) await this.storage.deleteByUrl(profile.avatarUrl);
-      directUpdate.avatarUrl = await this.storage.upload('avatars', avatarFile, user.id);
-    }
 
-    // Admin onayına giden alanlar: bio, title, education, tags, certificateUrl, cvUrl, firstName, lastName
+    // Admin onayına giden alanlar: avatar, bio, title, education, tags, certificateUrl, cvUrl, firstName, lastName
     const reviewUpdate: Record<string, unknown> = {};
+    if (avatarFile) {
+      if ((profile as Record<string, unknown>).pendingAvatarUrl) {
+        await this.storage.deleteByUrl((profile as Record<string, unknown>).pendingAvatarUrl as string);
+      }
+      reviewUpdate.pendingAvatarUrl = await this.storage.upload('avatars', avatarFile, user.id);
+    }
     if (dto.firstName !== undefined) reviewUpdate.pendingFirstName = dto.firstName;
     if (dto.lastName !== undefined) reviewUpdate.pendingLastName = dto.lastName;
     if (dto.bio !== undefined) reviewUpdate.pendingBio = dto.bio;

@@ -134,7 +134,8 @@ export class AdminService {
       data.isPublished = true;
       const pendingFirst = (expert as Record<string, unknown>).pendingFirstName as string | null | undefined;
       const pendingLast = (expert as Record<string, unknown>).pendingLastName as string | null | undefined;
-      const isRevision = !!(expert.pendingBio || expert.pendingTitle || expert.pendingEducation || expert.pendingTagIds || expert.pendingCertificateUrl || expert.pendingCvUrl || pendingFirst || pendingLast);
+      const pendingAvUrl = (expert as Record<string, unknown>).pendingAvatarUrl as string | null | undefined;
+      const isRevision = !!(expert.pendingBio || expert.pendingTitle || expert.pendingEducation || expert.pendingTagIds || expert.pendingCertificateUrl || expert.pendingCvUrl || pendingFirst || pendingLast || pendingAvUrl);
       if (pendingFirst || pendingLast) {
         const nameUpdate: Record<string, string> = {};
         if (pendingFirst) { nameUpdate.firstName = pendingFirst; data.pendingFirstName = null; }
@@ -148,6 +149,12 @@ export class AdminService {
         const tagIds: string[] = JSON.parse(expert.pendingTagIds);
         data.tags = { set: tagIds.map((tid) => ({ id: tid })) };
         data.pendingTagIds = null;
+      }
+      const pendingAvatar = (expert as Record<string, unknown>).pendingAvatarUrl as string | null | undefined;
+      if (pendingAvatar) {
+        if (expert.avatarUrl) await this.storage.deleteByUrl(expert.avatarUrl);
+        data.avatarUrl = pendingAvatar;
+        data.pendingAvatarUrl = null;
       }
       if (expert.pendingCertificateUrl) {
         if (expert.certificateUrl) await this.storage.deleteByUrl(expert.certificateUrl);
@@ -174,6 +181,9 @@ export class AdminService {
     if (dto.status === 'REDDEDILDI') {
       if (expert.pendingCertificateUrl) await this.storage.deleteByUrl(expert.pendingCertificateUrl);
       if (expert.pendingCvUrl) await this.storage.deleteByUrl(expert.pendingCvUrl);
+      const rejectAvatar = (expert as Record<string, unknown>).pendingAvatarUrl as string | null | undefined;
+      if (rejectAvatar) await this.storage.deleteByUrl(rejectAvatar);
+      data.pendingAvatarUrl = null;
       data.pendingFirstName = null;
       data.pendingLastName = null;
       data.pendingBio = null;
