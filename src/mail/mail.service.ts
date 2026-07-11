@@ -35,7 +35,7 @@ export class MailService {
       <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden">
         <div style="background:#016a59;padding:28px 32px;text-align:center">
           <h1 style="color:#ffffff;margin:0;font-size:20px;font-weight:600;letter-spacing:-0.3px">
-            Uygun Ücretli Terapi
+            Yeçamer
           </h1>
         </div>
         <div style="padding:36px 32px">
