@@ -123,6 +123,22 @@ export class ForumService {
     });
   }
 
+  async getMyQuestionById(userId: string, questionId: string) {
+    const q = await this.prisma.forumQuestion.findFirst({
+      where: { id: questionId, userId },
+      include: {
+        answers: {
+          include: {
+            expertProfile: { include: { user: { select: { firstName: true, lastName: true } } } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!q) throw new NotFoundException('Soru bulunamadı');
+    return q;
+  }
+
   async deleteQuestion(userId: string, questionId: string) {
     const q = await this.prisma.forumQuestion.findUnique({ where: { id: questionId } });
     if (!q) throw new NotFoundException('Soru bulunamadı');

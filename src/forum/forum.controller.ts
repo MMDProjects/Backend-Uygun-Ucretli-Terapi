@@ -49,6 +49,16 @@ export class ForumController {
   }
 
   @Roles('DANISAN')
+  @Get('my-questions/:id')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Kendi sorumun detayı', description: 'Danışanın kendi sorduğu sorunun detayı ve cevapları (statüden bağımsız).' })
+  @ApiParam({ name: 'id', description: 'Soru UUID' })
+  @ApiResponse({ status: 404, description: 'Soru bulunamadı veya size ait değil' })
+  getMyQuestionById(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.forumService.getMyQuestionById(user.id, id);
+  }
+
+  @Roles('DANISAN')
   @Delete('questions/:id')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Soruyu sil', description: 'Danışan sadece ONAY_BEKLIYOR statüsündeki kendi sorusunu silebilir.' })
