@@ -34,7 +34,11 @@ async function createApp(): Promise<NestExpressApplication> {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error(`CORS: ${origin} izin listesinde yok`));
+        callback(
+          new Error(
+            `CORS: ${origin} izin listesinde yok. İzinli origin'ler: ${allowedOrigins.join(', ')}. FRONTEND_URL env değişkenini kontrol edin.`,
+          ),
+        );
       }
     },
     credentials: true,

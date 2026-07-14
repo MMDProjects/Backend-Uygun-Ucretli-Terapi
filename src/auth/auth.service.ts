@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { StorageService } from '../storage/storage.service';
@@ -128,7 +129,17 @@ export class AuthService {
   }
 
   async refresh(userId: string, oldRefreshToken: string) {
-    await this.prisma.refreshToken.delete({ where: { token: oldRefreshToken } });
+    try {
+      await this.prisma.refreshToken.delete({ where: { token: oldRefreshToken } });
+    } catch (e) {
+      // Eşzamanlı iki refresh isteği aynı token'ı kullanırsa, ikincisi burada
+      // "kayıt bulunamadı" hatası alır çünkü token ilk istek tarafından zaten silinmiştir.
+      // Bunu 500 yerine düzgün bir 401'e çeviriyoruz.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        throw new UnauthorizedException('Refresh token geçersiz veya zaten kullanılmış');
+      }
+      throw e;
+    }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
