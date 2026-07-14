@@ -95,7 +95,7 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
-  @ApiOperation({ summary: 'Giriş yap', description: 'Dakikada max 5 istek. Başarılı girişte accessToken (15dk) ve refreshToken (7gün) döner.' })
+  @ApiOperation({ summary: 'Giriş yap', description: 'Dakikada max 5 istek. Başarılı girişte accessToken (1sa) ve refreshToken (7gün) döner.' })
   @ApiResponse({ status: 200, schema: { example: { accessToken: 'eyJ...', refreshToken: 'eyJ...' } } })
   @ApiResponse({ status: 401, description: 'Geçersiz kimlik bilgileri' })
   @ApiResponse({ status: 429, description: 'Çok fazla istek (rate limit)' })
