@@ -9,7 +9,6 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { StorageService } from '../storage/storage.service';
@@ -19,6 +18,7 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
+import { REFRESH_GRACE_MS } from './auth.constants';
 
 @Injectable()
 export class AuthService {
@@ -31,7 +31,9 @@ export class AuthService {
   ) {}
 
   async registerDanisan(dto: RegisterDanisanDto) {
-    const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const exists = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (exists) throw new ConflictException('Bu e-posta zaten kayıtlı');
 
     const hash = await bcrypt.hash(dto.password, 12);
@@ -60,15 +62,22 @@ export class AuthService {
     dto: RegisterUzmanDto,
     files: { certificate?: Express.Multer.File[]; cv?: Express.Multer.File[] },
   ) {
-    if (!files.certificate?.[0]) throw new BadRequestException('Sertifika PDF zorunludur');
+    if (!files.certificate?.[0])
+      throw new BadRequestException('Sertifika PDF zorunludur');
     if (!files.cv?.[0]) throw new BadRequestException('CV PDF zorunludur');
 
-    const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const exists = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (exists) throw new ConflictException('Bu e-posta zaten kayıtlı');
 
     const hash = await bcrypt.hash(dto.password, 12);
     const tempId = `reg-${Date.now()}`;
-    const certificateUrl = await this.storage.upload('certificates', files.certificate[0], tempId);
+    const certificateUrl = await this.storage.upload(
+      'certificates',
+      files.certificate[0],
+      tempId,
+    );
     const cvUrl = await this.storage.upload('cvs', files.cv[0], tempId);
 
     const user = await this.prisma.user.create({
@@ -110,14 +119,19 @@ export class AuthService {
     });
 
     const fullName = `${user.firstName} ${user.lastName}`.trim();
-    this.mail.sendNewExpertApplicationAdmin(fullName, user.email).catch(() => {});
+    this.mail
+      .sendNewExpertApplicationAdmin(fullName, user.email)
+      .catch(() => {});
 
     return tokens;
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (!user || !user.isActive) throw new UnauthorizedException('Geçersiz kimlik bilgileri');
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (!user || !user.isActive)
+      throw new UnauthorizedException('Geçersiz kimlik bilgileri');
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Geçersiz kimlik bilgileri');
@@ -129,20 +143,47 @@ export class AuthService {
   }
 
   async refresh(userId: string, oldRefreshToken: string) {
-    try {
-      await this.prisma.refreshToken.delete({ where: { token: oldRefreshToken } });
-    } catch (e) {
-      // Eşzamanlı iki refresh isteği aynı token'ı kullanırsa, ikincisi burada
-      // "kayıt bulunamadı" hatası alır çünkü token ilk istek tarafından zaten silinmiştir.
-      // Bunu 500 yerine düzgün bir 401'e çeviriyoruz.
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        throw new UnauthorizedException('Refresh token geçersiz veya zaten kullanılmış');
+    const now = new Date();
+
+    // İlk kullanım: token'ı atomik olarak revoke et (hard-delete yerine soft-revoke).
+    const claimed = await this.prisma.refreshToken.updateMany({
+      where: { token: oldRefreshToken, revokedAt: null },
+      data: { revokedAt: now },
+    });
+
+    if (claimed.count === 0) {
+      // Token daha önce kullanılmış. Çok sekme / çift F5 senaryolarında eşzamanlı
+      // istekler aynı token'ı gönderir; hoşgörü penceresi içindeyse kabul et,
+      // her isteğe kendi yeni token çifti verilir. Pencere dışıysa 401.
+      const stored = await this.prisma.refreshToken.findUnique({
+        where: { token: oldRefreshToken },
+      });
+      const withinGrace =
+        stored?.revokedAt != null &&
+        now.getTime() - stored.revokedAt.getTime() <= REFRESH_GRACE_MS;
+      if (!withinGrace) {
+        throw new UnauthorizedException(
+          'Refresh token geçersiz veya zaten kullanılmış',
+        );
       }
-      throw e;
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
+
+    // Fırsatçı temizlik: bu kullanıcının süresi dolmuş veya penceresi kapanmış
+    // token satırlarını sil (ayrı bir cron gerektirmeden birikmeyi önler).
+    void this.prisma.refreshToken
+      .deleteMany({
+        where: {
+          userId,
+          OR: [
+            { expiresAt: { lt: now } },
+            { revokedAt: { lt: new Date(now.getTime() - REFRESH_GRACE_MS) } },
+          ],
+        },
+      })
+      .catch(() => undefined);
 
     return this.generateTokens(user.id, user.email, user.role, {
       firstName: user.firstName,
@@ -151,13 +192,20 @@ export class AuthService {
   }
 
   async logout(refreshToken: string) {
-    await this.prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
+    await this.prisma.refreshToken.deleteMany({
+      where: { token: refreshToken },
+    });
     return { message: 'Çıkış yapıldı' };
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (!user) return { message: 'Eğer e-posta kayıtlıysa sıfırlama bağlantısı gönderildi' };
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (!user)
+      return {
+        message: 'Eğer e-posta kayıtlıysa sıfırlama bağlantısı gönderildi',
+      };
 
     const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 30 * 60 * 1000); // 30 dakika
@@ -168,7 +216,9 @@ export class AuthService {
     });
 
     await this.mail.sendPasswordReset(user.email, user.firstName, token);
-    return { message: 'Eğer e-posta kayıtlıysa sıfırlama bağlantısı gönderildi' };
+    return {
+      message: 'Eğer e-posta kayıtlıysa sıfırlama bağlantısı gönderildi',
+    };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
@@ -178,7 +228,8 @@ export class AuthService {
         passwordResetExpires: { gt: new Date() },
       },
     });
-    if (!user) throw new BadRequestException('Geçersiz veya süresi dolmuş token');
+    if (!user)
+      throw new BadRequestException('Geçersiz veya süresi dolmuş token');
 
     const hash = await bcrypt.hash(dto.newPassword, 12);
     await this.prisma.user.update({
@@ -196,7 +247,8 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı');
-    const { passwordHash, passwordResetToken, passwordResetExpires, ...safe } = user;
+    const { passwordHash, passwordResetToken, passwordResetExpires, ...safe } =
+      user;
     return safe;
   }
 
@@ -205,7 +257,8 @@ export class AuthService {
       where: { id: userId },
       data: dto,
     });
-    const { passwordHash, passwordResetToken, passwordResetExpires, ...safe } = updated;
+    const { passwordHash, passwordResetToken, passwordResetExpires, ...safe } =
+      updated;
     return safe;
   }
 
@@ -219,12 +272,18 @@ export class AuthService {
 
     const accessToken = this.jwt.sign(
       { ...payload, jti: crypto.randomUUID() },
-      { secret: this.config.get('JWT_ACCESS_SECRET'), expiresIn: this.config.get('JWT_ACCESS_EXPIRES') },
+      {
+        secret: this.config.get('JWT_ACCESS_SECRET'),
+        expiresIn: this.config.get('JWT_ACCESS_EXPIRES'),
+      },
     );
 
     const refreshToken = this.jwt.sign(
       { ...payload, jti: crypto.randomUUID() },
-      { secret: this.config.get('JWT_REFRESH_SECRET'), expiresIn: this.config.get('JWT_REFRESH_EXPIRES') },
+      {
+        secret: this.config.get('JWT_REFRESH_SECRET'),
+        expiresIn: this.config.get('JWT_REFRESH_EXPIRES'),
+      },
     );
 
     const expiresAt = new Date();
