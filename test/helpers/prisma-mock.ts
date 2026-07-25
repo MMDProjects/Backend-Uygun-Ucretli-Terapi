@@ -21,6 +21,7 @@ export function buildPrismaMock() {
       delete: jest.fn(),
       deleteMany: jest.fn(),
       findUnique: jest.fn(),
+      updateMany: jest.fn(),
     },
     expertProfile: {
       findUnique: jest.fn(),
