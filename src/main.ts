@@ -88,13 +88,6 @@ async function createApp(): Promise<NestExpressApplication> {
   return app;
 }
 
-// Vercel serverless handler
-export default async function handler(req: any, res: any) {
-  const app = await createApp();
-  const expressApp = app.getHttpAdapter().getInstance();
-  return expressApp(req, res);
-}
-
 // Start server
 if (require.main === module) {
   createApp().then(async (app) => {
