@@ -21,11 +21,17 @@ export class TestsService {
   }
 
   async saveResult(user: User, dto: SaveResultDto) {
-    const test = await this.prisma.test.findUnique({ where: { id: dto.testId } });
+    const test = await this.prisma.test.findUnique({
+      where: { id: dto.testId },
+    });
     if (!test) throw new NotFoundException('Test bulunamadı');
 
     return this.prisma.testResult.create({
-      data: { userId: user.id, testId: dto.testId, scoreSummary: dto.scoreSummary },
+      data: {
+        userId: user.id,
+        testId: dto.testId,
+        scoreSummary: dto.scoreSummary,
+      },
     });
   }
 

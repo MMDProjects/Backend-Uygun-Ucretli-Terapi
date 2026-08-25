@@ -10,13 +10,23 @@ export class PackagesController {
   constructor(private prisma: PrismaService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Paket listesi (public)', description: 'Admin tarafından yönetilen 5 paket. Uzman sayfalarında fiyat gösterilmez, sadece bu endpoint kullanılır.' })
+  @ApiOperation({
+    summary: 'Paket listesi (public)',
+    description:
+      'Admin tarafından yönetilen 5 paket. Uzman sayfalarında fiyat gösterilmez, sadece bu endpoint kullanılır.',
+  })
   findAll() {
-    return this.prisma.package.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+    return this.prisma.package.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    });
   }
 
   @Get('pricing')
-  @ApiOperation({ summary: 'Platform fiyat bilgisi (public)', description: 'Duyuru bandı ve uzman kartı için standardPrice + discountedPrice.' })
+  @ApiOperation({
+    summary: 'Platform fiyat bilgisi (public)',
+    description:
+      'Duyuru bandı ve uzman kartı için standardPrice + discountedPrice.',
+  })
   async getPricing() {
     const settings = await this.prisma.systemSetting.findFirst({
       select: { standardPrice: true, discountedPrice: true },

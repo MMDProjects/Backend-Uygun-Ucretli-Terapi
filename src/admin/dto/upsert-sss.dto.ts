@@ -1,4 +1,10 @@
-import { IsString, IsEnum, IsBoolean, IsInt, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsEnum,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+} from 'class-validator';
 import { SssPage } from '@prisma/client';
 
 export class UpsertSssDto {

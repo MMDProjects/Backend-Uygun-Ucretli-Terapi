@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, IsBoolean, Equals, Matches } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  MinLength,
+  IsBoolean,
+  Equals,
+  Matches,
+} from 'class-validator';
 
 export class RegisterDanisanDto {
   @ApiProperty({ example: 'Ahmet', description: 'Ad' })
@@ -15,7 +22,9 @@ export class RegisterDanisanDto {
   email: string;
 
   @ApiProperty({ example: '05321234567', description: '10-11 haneli telefon' })
-  @Matches(/^[0-9]{10,11}$/, { message: 'Geçerli bir telefon numarası giriniz' })
+  @Matches(/^[0-9]{10,11}$/, {
+    message: 'Geçerli bir telefon numarası giriniz',
+  })
   phone: string;
 
   @ApiProperty({ example: 'Sifre1234!', minLength: 8 })

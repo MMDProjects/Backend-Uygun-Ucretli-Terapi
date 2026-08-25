@@ -12,7 +12,9 @@ export class CommentsService {
   ) {}
 
   async create(user: User, expertProfileId: string, dto: CreateCommentDto) {
-    const expert = await this.prisma.expertProfile.findUnique({ where: { id: expertProfileId } });
+    const expert = await this.prisma.expertProfile.findUnique({
+      where: { id: expertProfileId },
+    });
     if (!expert) throw new NotFoundException('Uzman bulunamadı');
 
     return this.prisma.comment.create({
@@ -43,7 +45,10 @@ export class CommentsService {
     const comment = await this.prisma.comment.findUnique({ where: { id } });
     if (!comment) throw new NotFoundException('Yorum bulunamadı');
 
-    await this.prisma.comment.update({ where: { id }, data: { isApproved: true } });
+    await this.prisma.comment.update({
+      where: { id },
+      data: { isApproved: true },
+    });
 
     // Rating ortalamasını yeniden hesapla
     const result = await this.prisma.comment.aggregate({

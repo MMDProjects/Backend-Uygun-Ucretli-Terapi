@@ -1,5 +1,18 @@
-import { Controller, Get, Post, Body, Param, ParseUUIDPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -15,9 +28,16 @@ export class CommentsController {
   @Roles('DANISAN')
   @Post(':id/comments')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Yorum bırak', description: 'Yorum admin onayından geçtikten sonra yayınlanır ve uzmanın rating ortalaması güncellenir.' })
+  @ApiOperation({
+    summary: 'Yorum bırak',
+    description:
+      'Yorum admin onayından geçtikten sonra yayınlanır ve uzmanın rating ortalaması güncellenir.',
+  })
   @ApiParam({ name: 'id', description: 'Uzman profil UUID' })
-  @ApiResponse({ status: 201, description: 'Yorum oluşturuldu, onay bekleniyor' })
+  @ApiResponse({
+    status: 201,
+    description: 'Yorum oluşturuldu, onay bekleniyor',
+  })
   create(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) expertId: string,
@@ -28,7 +48,10 @@ export class CommentsController {
 
   @Public()
   @Get(':id/comments')
-  @ApiOperation({ summary: 'Uzman yorumları (public)', description: 'Sadece admin onaylı yorumlar döner.' })
+  @ApiOperation({
+    summary: 'Uzman yorumları (public)',
+    description: 'Sadece admin onaylı yorumlar döner.',
+  })
   @ApiParam({ name: 'id', description: 'Uzman profil UUID' })
   findApproved(@Param('id', ParseUUIDPipe) expertId: string) {
     return this.commentsService.findApproved(expertId);

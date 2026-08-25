@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -90,7 +89,9 @@ export class ExpertsService {
     certificateFile?: Express.Multer.File,
     cvFile?: Express.Multer.File,
   ) {
-    const profile = await this.prisma.expertProfile.findUnique({ where: { userId: user.id } });
+    const profile = await this.prisma.expertProfile.findUnique({
+      where: { userId: user.id },
+    });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
     const directUpdate: Record<string, unknown> = {};
@@ -99,18 +100,37 @@ export class ExpertsService {
     const reviewUpdate: Record<string, unknown> = {};
     if (avatarFile) {
       if ((profile as Record<string, unknown>).pendingAvatarUrl) {
-        await this.storage.deleteByUrl((profile as Record<string, unknown>).pendingAvatarUrl as string);
+        await this.storage.deleteByUrl(
+          (profile as Record<string, unknown>).pendingAvatarUrl as string,
+        );
       }
-      reviewUpdate.pendingAvatarUrl = await this.storage.upload('avatars', avatarFile, user.id);
+      reviewUpdate.pendingAvatarUrl = await this.storage.upload(
+        'avatars',
+        avatarFile,
+        user.id,
+      );
     }
-    if (dto.firstName !== undefined) reviewUpdate.pendingFirstName = dto.firstName;
+    if (dto.firstName !== undefined)
+      reviewUpdate.pendingFirstName = dto.firstName;
     if (dto.lastName !== undefined) reviewUpdate.pendingLastName = dto.lastName;
     if (dto.bio !== undefined) reviewUpdate.pendingBio = dto.bio;
     if (dto.title !== undefined) reviewUpdate.pendingTitle = dto.title;
-    if (dto.education !== undefined) reviewUpdate.pendingEducation = dto.education;
-    if (dto.tagIds !== undefined) reviewUpdate.pendingTagIds = JSON.stringify(dto.tagIds);
-    if (certificateFile) reviewUpdate.pendingCertificateUrl = await this.storage.upload('certificates', certificateFile, user.id);
-    if (cvFile) reviewUpdate.pendingCvUrl = await this.storage.upload('cvs', cvFile, user.id);
+    if (dto.education !== undefined)
+      reviewUpdate.pendingEducation = dto.education;
+    if (dto.tagIds !== undefined)
+      reviewUpdate.pendingTagIds = JSON.stringify(dto.tagIds);
+    if (certificateFile)
+      reviewUpdate.pendingCertificateUrl = await this.storage.upload(
+        'certificates',
+        certificateFile,
+        user.id,
+      );
+    if (cvFile)
+      reviewUpdate.pendingCvUrl = await this.storage.upload(
+        'cvs',
+        cvFile,
+        user.id,
+      );
 
     const needsReview = Object.keys(reviewUpdate).length > 0;
 
@@ -118,7 +138,9 @@ export class ExpertsService {
       // Yayında olan uzman güncelliyorsa REVIZE_GONDERILDI → "Profil Onayları" kuyruğuna düşer.
       // Henüz onaylanmamış (isPublished: false) uzman güncelliyorsa ONAY_BEKLIYOR'da kalır
       // → "Yeni Başvurular" kuyruğundan çıkmaması için status değiştirilmez.
-      const newStatus = profile.isPublished ? 'REVIZE_GONDERILDI' : 'PROFIL_GUNCELLENDI';
+      const newStatus = profile.isPublished
+        ? 'REVIZE_GONDERILDI'
+        : 'PROFIL_GUNCELLENDI';
       await this.prisma.expertProfile.update({
         where: { userId: user.id },
         data: {
@@ -128,7 +150,10 @@ export class ExpertsService {
           // isPublished kasıtlı olarak değiştirilmiyor — yayındaki eski içerik görünmeye devam eder
         },
       });
-      return { message: 'Biyografi/belge değişikliği admin onayına gönderildi. Onaylanana kadar mevcut profiliniz yayında kalmaya devam eder.' };
+      return {
+        message:
+          'Biyografi/belge değişikliği admin onayına gönderildi. Onaylanana kadar mevcut profiliniz yayında kalmaya devam eder.',
+      };
     }
 
     if (Object.keys(directUpdate).length > 0) {
@@ -155,7 +180,9 @@ export class ExpertsService {
   }
 
   async getMyAvailabilities(userId: string) {
-    const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.expertProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
     return this.prisma.availability.findMany({
@@ -164,7 +191,9 @@ export class ExpertsService {
   }
 
   async addAvailability(userId: string, dto: CreateAvailabilityDto) {
-    const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.expertProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
     return this.prisma.availability.create({
@@ -178,11 +207,16 @@ export class ExpertsService {
   }
 
   async removeAvailability(userId: string, availId: string) {
-    const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.expertProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
-    const avail = await this.prisma.availability.findUnique({ where: { id: availId } });
-    if (!avail || avail.expertProfileId !== profile.id) throw new ForbiddenException();
+    const avail = await this.prisma.availability.findUnique({
+      where: { id: availId },
+    });
+    if (!avail || avail.expertProfileId !== profile.id)
+      throw new ForbiddenException();
 
     await this.prisma.availability.delete({ where: { id: availId } });
     return { message: 'Slot silindi' };
@@ -198,14 +232,20 @@ export class ExpertsService {
     now.setHours(0, 0, 0, 0);
 
     return this.prisma.availability.findMany({
-      where: { expertProfileId: expertId, isBlockedByAdmin: false, date: { gte: now } },
+      where: {
+        expertProfileId: expertId,
+        isBlockedByAdmin: false,
+        date: { gte: now },
+      },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
       take: 42,
     });
   }
 
   async addFavorite(userId: string, expertProfileId: string) {
-    const expert = await this.prisma.expertProfile.findUnique({ where: { id: expertProfileId } });
+    const expert = await this.prisma.expertProfile.findUnique({
+      where: { id: expertProfileId },
+    });
     if (!expert) throw new NotFoundException('Uzman bulunamadı');
 
     return this.prisma.favorite.upsert({
@@ -216,7 +256,9 @@ export class ExpertsService {
   }
 
   async removeFavorite(userId: string, expertProfileId: string) {
-    await this.prisma.favorite.deleteMany({ where: { userId, expertProfileId } });
+    await this.prisma.favorite.deleteMany({
+      where: { userId, expertProfileId },
+    });
     return { message: 'Favorilerden çıkarıldı' };
   }
 
@@ -225,7 +267,13 @@ export class ExpertsService {
       where: { userId },
       include: {
         expertProfile: {
-          select: { id: true, title: true, avatarUrl: true, rating: true, user: { select: { firstName: true, lastName: true } } },
+          select: {
+            id: true,
+            title: true,
+            avatarUrl: true,
+            rating: true,
+            user: { select: { firstName: true, lastName: true } },
+          },
         },
       },
     });
@@ -249,7 +297,10 @@ export class ExpertsService {
   }
 
   async getTags() {
-    return this.prisma.tag.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } });
+    return this.prisma.tag.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async getExpertBlogs(expertProfileId: string) {
@@ -261,7 +312,13 @@ export class ExpertsService {
     return this.prisma.blog.findMany({
       where: { expertProfileId, status: 'YAYINDA' },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, slug: true, title: true, content: true, createdAt: true },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        content: true,
+        createdAt: true,
+      },
     });
   }
 }

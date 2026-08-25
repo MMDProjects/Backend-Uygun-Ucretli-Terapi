@@ -32,7 +32,10 @@ export class StorageService implements OnModuleInit {
     });
 
     this.bucket = this.config.get<string>('MINIO_BUCKET', 'psiko-uploads');
-    this.publicUrl = this.config.get<string>('MINIO_PUBLIC_URL', `http://localhost:${port}`);
+    this.publicUrl = this.config.get<string>(
+      'MINIO_PUBLIC_URL',
+      `http://localhost:${port}`,
+    );
   }
 
   async onModuleInit() {
@@ -58,7 +61,9 @@ export class StorageService implements OnModuleInit {
             }),
           }),
         );
-        this.logger.log(`Bucket "${this.bucket}" oluşturuldu ve public yapıldı.`);
+        this.logger.log(
+          `Bucket "${this.bucket}" oluşturuldu ve public yapıldı.`,
+        );
       } catch (err) {
         this.logger.error('MinIO bucket oluşturulamadı:', err);
       }
@@ -70,7 +75,9 @@ export class StorageService implements OnModuleInit {
     file: Express.Multer.File,
     userId: string,
   ): Promise<string> {
-    const ext = extname(file.originalname) || (file.mimetype === 'application/pdf' ? '.pdf' : '.bin');
+    const ext =
+      extname(file.originalname) ||
+      (file.mimetype === 'application/pdf' ? '.pdf' : '.bin');
     const key = `${folder}/${userId}-${Date.now()}${ext}`;
 
     await this.s3.send(
@@ -89,7 +96,9 @@ export class StorageService implements OnModuleInit {
     try {
       const key = url.split(`/${this.bucket}/`)[1];
       if (!key) return;
-      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+      await this.s3.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
     } catch {
       // Silme hatası sessizce geç
     }

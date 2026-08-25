@@ -1,5 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, ArrayMinSize, ArrayMaxSize, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsUUID,
+} from 'class-validator';
 import { WordCount } from '../../common/validators/word-count.validator';
 
 export class UpdateProfileDto {
@@ -18,13 +25,18 @@ export class UpdateProfileDto {
   @IsString()
   title?: string;
 
-  @ApiPropertyOptional({ example: 'Merhaba, ben...', description: '80-150 kelime arasında olmalı' })
+  @ApiPropertyOptional({
+    example: 'Merhaba, ben...',
+    description: '80-150 kelime arasında olmalı',
+  })
   @IsOptional()
   @IsString()
   @WordCount(80, 150)
   bio?: string;
 
-  @ApiPropertyOptional({ example: 'Hacettepe Üniversitesi Psikoloji bölümü mezunuyum...' })
+  @ApiPropertyOptional({
+    example: 'Hacettepe Üniversitesi Psikoloji bölümü mezunuyum...',
+  })
   @IsOptional()
   @IsString()
   education?: string;

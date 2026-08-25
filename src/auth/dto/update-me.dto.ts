@@ -10,6 +10,8 @@ export class UpdateMeDto {
   lastName?: string;
 
   @IsOptional()
-  @Matches(/^[0-9]{10,11}$/, { message: 'Geçerli bir telefon numarası giriniz' })
+  @Matches(/^[0-9]{10,11}$/, {
+    message: 'Geçerli bir telefon numarası giriniz',
+  })
   phone?: string;
 }

@@ -11,8 +11,16 @@ export class SssController {
   constructor(private readonly sssService: SssService) {}
 
   @Get()
-  @ApiOperation({ summary: 'SSS listesi', description: 'page parametresi verilmezse tüm sayfaların SSS\'leri döner.' })
-  @ApiQuery({ name: 'page', required: false, enum: SssPage, description: 'GENEL | TESTLER | PAKETLER' })
+  @ApiOperation({
+    summary: 'SSS listesi',
+    description: "page parametresi verilmezse tüm sayfaların SSS'leri döner.",
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    enum: SssPage,
+    description: 'GENEL | TESTLER | PAKETLER',
+  })
   findAll(@Query('page') page?: SssPage) {
     return this.sssService.findByPage(page);
   }

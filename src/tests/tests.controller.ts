@@ -1,5 +1,11 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { TestsService } from './tests.service';
 import { SaveResultDto } from './dto/save-result.dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -31,7 +37,10 @@ export class TestsController {
   @Roles('DANISAN')
   @Post('results')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Test sonucunu kaydet', description: 'Test tamamlandıktan sonra skor özeti kaydedilir.' })
+  @ApiOperation({
+    summary: 'Test sonucunu kaydet',
+    description: 'Test tamamlandıktan sonra skor özeti kaydedilir.',
+  })
   @ApiResponse({ status: 201, description: 'Sonuç kaydedildi' })
   saveResult(@CurrentUser() user: User, @Body() dto: SaveResultDto) {
     return this.testsService.saveResult(user, dto);
@@ -40,7 +49,10 @@ export class TestsController {
   @Roles('DANISAN')
   @Get('history/me')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Test geçmişim', description: 'Giriş yapan danışanın daha önce çözdüğü tüm testler.' })
+  @ApiOperation({
+    summary: 'Test geçmişim',
+    description: 'Giriş yapan danışanın daha önce çözdüğü tüm testler.',
+  })
   getHistory(@CurrentUser() user: User) {
     return this.testsService.getHistory(user.id);
   }

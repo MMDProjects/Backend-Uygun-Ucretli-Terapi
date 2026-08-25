@@ -24,12 +24,12 @@ const DEFAULT_KVKK_SECTIONS: KvkkSection[] = [
   {
     id: 'hukuki-sebepler',
     title: '4. Hukuki Sebepler',
-    html: '<p>Kişisel verileriniz KVKK\'nın 5. ve 6. maddeleri kapsamında aşağıdaki hukuki sebeplere dayanılarak işlenmektedir:</p><ul><li>Açık rızanızın varlığı (özel nitelikli veriler ve pazarlama iletişimi için)</li><li>Sözleşmenin kurulması veya ifasıyla doğrudan ilgili olması</li><li>Veri sorumlusunun hukuki yükümlülüğünü yerine getirmesi</li><li>İlgili kişinin temel hak ve özgürlüklerine zarar vermemek kaydıyla meşru menfaat</li></ul>',
+    html: "<p>Kişisel verileriniz KVKK'nın 5. ve 6. maddeleri kapsamında aşağıdaki hukuki sebeplere dayanılarak işlenmektedir:</p><ul><li>Açık rızanızın varlığı (özel nitelikli veriler ve pazarlama iletişimi için)</li><li>Sözleşmenin kurulması veya ifasıyla doğrudan ilgili olması</li><li>Veri sorumlusunun hukuki yükümlülüğünü yerine getirmesi</li><li>İlgili kişinin temel hak ve özgürlüklerine zarar vermemek kaydıyla meşru menfaat</li></ul>",
   },
   {
     id: 'veri-aktarimi',
     title: '5. Kişisel Verilerin Aktarılması',
-    html: '<p>Kişisel verileriniz; KVKK\'nın 8. ve 9. maddeleri çerçevesinde aşağıdaki taraflarla paylaşılabilir:</p><ul><li>Onaylı uzmanlar — yalnızca talep gönderdiğiniz veya eşleştiğiniz uzmanlarla sınırlı bilgi paylaşımı</li><li>Altyapı hizmet sağlayıcıları — barındırma, e-posta (Brevo/Sendinblue) ve depolama (AWS S3 / Cloudinary) hizmetleri</li><li>Yasal zorunluluk hâlinde ilgili kamu kurum ve kuruluşları</li></ul><p>Kişisel verileriniz, yukarıda sayılanlar dışında üçüncü taraflarla paylaşılmaz; ticari amaçla satılmaz, kiralanmaz veya başka şekilde kullanıma sunulmaz.</p>',
+    html: "<p>Kişisel verileriniz; KVKK'nın 8. ve 9. maddeleri çerçevesinde aşağıdaki taraflarla paylaşılabilir:</p><ul><li>Onaylı uzmanlar — yalnızca talep gönderdiğiniz veya eşleştiğiniz uzmanlarla sınırlı bilgi paylaşımı</li><li>Altyapı hizmet sağlayıcıları — barındırma, e-posta (Brevo/Sendinblue) ve depolama (AWS S3 / Cloudinary) hizmetleri</li><li>Yasal zorunluluk hâlinde ilgili kamu kurum ve kuruluşları</li></ul><p>Kişisel verileriniz, yukarıda sayılanlar dışında üçüncü taraflarla paylaşılmaz; ticari amaçla satılmaz, kiralanmaz veya başka şekilde kullanıma sunulmaz.</p>",
   },
   {
     id: 'veri-toplama-yontemi',
@@ -61,20 +61,31 @@ const DEFAULT_ANNOUNCEMENT_ITEMS = [
 ];
 
 const DEFAULT_LOGIN_POPUP_SETTINGS = {
-  title: "Ücretsiz Ön Görüşme\nHakkınız Hazır",
-  description: "Platforma hoş geldiniz. Size özel ücretsiz ön görüşme hakkınızı kullanarak doğru uzmanı bulmanıza yardımcı olalım.",
-  benefits: ["30 dakikalık tanışma seansı", "Uzmanla birebir değerlendirme", "Hiçbir ücret talep edilmez"],
-  buttonText: "Uzmanları İncele",
-  buttonUrl: "/uzmanlar",
+  title: 'Ücretsiz Ön Görüşme\nHakkınız Hazır',
+  description:
+    'Platforma hoş geldiniz. Size özel ücretsiz ön görüşme hakkınızı kullanarak doğru uzmanı bulmanıza yardımcı olalım.',
+  benefits: [
+    '30 dakikalık tanışma seansı',
+    'Uzmanla birebir değerlendirme',
+    'Hiçbir ücret talep edilmez',
+  ],
+  buttonText: 'Uzmanları İncele',
+  buttonUrl: '/uzmanlar',
 };
 
 const DEFAULT_WHEEL_SEGMENTS = [
-  { label: 'Ön Görüş.', description: 'Ücretsiz ön görüşme hakkı — 20 dk WhatsApp görüşmesi' },
+  {
+    label: 'Ön Görüş.',
+    description: 'Ücretsiz ön görüşme hakkı — 20 dk WhatsApp görüşmesi',
+  },
   { label: '%10 İnd.', description: 'İlk seansta %10 indirim fırsatı' },
   { label: 'Tekrar!', description: 'Bu sefer olmadı — bir daha dene!' },
   { label: 'Bedava!', description: 'Ücretsiz ilk seans hakkı kazandın' },
   { label: '%20 İnd.', description: 'İlk seansta %20 indirim fırsatı' },
-  { label: 'Sürpriz!', description: 'Özel sürpriz ödül — WhatsApp\'tan talep et' },
+  {
+    label: 'Sürpriz!',
+    description: "Özel sürpriz ödül — WhatsApp'tan talep et",
+  },
 ];
 
 @Injectable()
@@ -90,23 +101,32 @@ export class AppService {
     const raw = (s?.announcementItems as string[] | null) ?? [];
     const items = raw.length > 0 ? raw : DEFAULT_ANNOUNCEMENT_ITEMS;
 
-    const rawSegments = (s?.wheelSegments as { label: string; description: string }[] | null) ?? [];
-    const segments = rawSegments.length >= 2 ? rawSegments : DEFAULT_WHEEL_SEGMENTS;
+    const rawSegments =
+      (s?.wheelSegments as { label: string; description: string }[] | null) ??
+      [];
+    const segments =
+      rawSegments.length >= 2 ? rawSegments : DEFAULT_WHEEL_SEGMENTS;
 
     const rawWinners = (s?.wheelWinnerIndices as number[] | null) ?? [];
-    const winnerIndices = rawWinners.filter((i) => i >= 0 && i < segments.length);
+    const winnerIndices = rawWinners.filter(
+      (i) => i >= 0 && i < segments.length,
+    );
 
     if (s && raw.length === 0) {
-      await this.prisma.systemSetting.update({
-        where: { id: s.id },
-        data: { announcementItems: DEFAULT_ANNOUNCEMENT_ITEMS },
-      }).catch(() => {});
+      await this.prisma.systemSetting
+        .update({
+          where: { id: s.id },
+          data: { announcementItems: DEFAULT_ANNOUNCEMENT_ITEMS },
+        })
+        .catch(() => {});
     }
 
-    const rawPopup = (s?.loginPopupSettings as Record<string, unknown> | null) ?? {};
-    const loginPopupSettings = Object.keys(rawPopup).length > 0
-      ? rawPopup
-      : DEFAULT_LOGIN_POPUP_SETTINGS;
+    const rawPopup =
+      (s?.loginPopupSettings as Record<string, unknown> | null) ?? {};
+    const loginPopupSettings =
+      Object.keys(rawPopup).length > 0
+        ? rawPopup
+        : DEFAULT_LOGIN_POPUP_SETTINGS;
 
     return {
       standardPrice: Number(s?.standardPrice ?? 1500),
@@ -121,11 +141,21 @@ export class AppService {
   }
 
   async getPublicKvkk() {
-    const active = await this.prisma.kvkkVersion.findFirst({ where: { isActive: true } });
+    const active = await this.prisma.kvkkVersion.findFirst({
+      where: { isActive: true },
+    });
     if (active) {
-      return { id: active.id, version: active.version, sections: active.sections as KvkkSection[] };
+      return {
+        id: active.id,
+        version: active.version,
+        sections: active.sections as KvkkSection[],
+      };
     }
-    return { id: null, version: DEFAULT_KVKK_VERSION, sections: DEFAULT_KVKK_SECTIONS };
+    return {
+      id: null,
+      version: DEFAULT_KVKK_VERSION,
+      sections: DEFAULT_KVKK_SECTIONS,
+    };
   }
 
   async getKvkkContent() {
@@ -142,19 +172,41 @@ export class AppService {
       success: true,
       data: {
         active: activeDetail
-          ? { id: activeDetail.id, version: activeDetail.version, sections: activeDetail.sections as KvkkSection[], publishedAt: activeDetail.publishedAt }
-          : { id: null, version: DEFAULT_KVKK_VERSION, sections: defaultSections, publishedAt: null },
+          ? {
+              id: activeDetail.id,
+              version: activeDetail.version,
+              sections: activeDetail.sections as KvkkSection[],
+              publishedAt: activeDetail.publishedAt,
+            }
+          : {
+              id: null,
+              version: DEFAULT_KVKK_VERSION,
+              sections: defaultSections,
+              publishedAt: null,
+            },
         history: versions,
       },
     };
   }
 
   async publishKvkkVersion(version: string, sections: KvkkSection[]) {
-    const jsonSections = sections as unknown as import('@prisma/client').Prisma.InputJsonValue;
-    await this.prisma.kvkkVersion.updateMany({ where: { isActive: true }, data: { isActive: false } });
+    const jsonSections =
+      sections as unknown as import('@prisma/client').Prisma.InputJsonValue;
+    await this.prisma.kvkkVersion.updateMany({
+      where: { isActive: true },
+      data: { isActive: false },
+    });
     const created = await this.prisma.kvkkVersion.create({
       data: { version, sections: jsonSections, isActive: true },
     });
-    return { success: true, data: { id: created.id, version: created.version, publishedAt: created.publishedAt }, message: 'Yeni KVKK versiyonu yayınlandı.' };
+    return {
+      success: true,
+      data: {
+        id: created.id,
+        version: created.version,
+        publishedAt: created.publishedAt,
+      },
+      message: 'Yeni KVKK versiyonu yayınlandı.',
+    };
   }
 }

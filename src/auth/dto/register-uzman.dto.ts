@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, IsBoolean, Equals, Matches, IsOptional, IsArray, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  MinLength,
+  IsBoolean,
+  Equals,
+  Matches,
+  IsOptional,
+  IsArray,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class RegisterUzmanDto {
@@ -16,7 +27,9 @@ export class RegisterUzmanDto {
   email: string;
 
   @ApiProperty({ example: '05331234567' })
-  @Matches(/^[0-9]{10,11}$/, { message: 'Geçerli bir telefon numarası giriniz' })
+  @Matches(/^[0-9]{10,11}$/, {
+    message: 'Geçerli bir telefon numarası giriniz',
+  })
   phone: string;
 
   @ApiProperty({ example: 'Sifre1234!', minLength: 8 })
@@ -24,7 +37,10 @@ export class RegisterUzmanDto {
   @MinLength(8)
   password: string;
 
-  @ApiProperty({ example: 'Uzman Klinik Psikolog', description: 'Unvan / uzmanlık başlığı' })
+  @ApiProperty({
+    example: 'Uzman Klinik Psikolog',
+    description: 'Unvan / uzmanlık başlığı',
+  })
   @IsString()
   title: string;
 
@@ -34,21 +50,33 @@ export class RegisterUzmanDto {
   @Equals(true, { message: 'KVKK onayı zorunludur' })
   kvkkConsent: boolean;
 
-  @ApiPropertyOptional({ example: 'Deneyimli klinik psikolog...', description: 'Uzman biyografisi (80–150 kelime)' })
+  @ApiPropertyOptional({
+    example: 'Deneyimli klinik psikolog...',
+    description: 'Uzman biyografisi (80–150 kelime)',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   bio?: string;
 
-  @ApiPropertyOptional({ example: 'Lisans: Hacettepe Üniversitesi - Psikoloji (2018)', description: 'Eğitim bilgisi' })
+  @ApiPropertyOptional({
+    example: 'Lisans: Hacettepe Üniversitesi - Psikoloji (2018)',
+    description: 'Eğitim bilgisi',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(1000)
   education?: string;
 
-  @ApiPropertyOptional({ type: [String], example: ['uuid-1', 'uuid-2'], description: 'Seçilen etiket UUID listesi (opsiyonel)' })
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['uuid-1', 'uuid-2'],
+    description: 'Seçilen etiket UUID listesi (opsiyonel)',
+  })
   @IsOptional()
-  @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
+  @Transform(({ value }) =>
+    Array.isArray(value) ? value : value ? [value] : undefined,
+  )
   @IsArray()
   @IsUUID('all', { each: true })
   tagIds?: string[];
@@ -62,6 +90,6 @@ export class RegisterUzmanDto {
   @IsOptional() @IsString() registrationCertificates?: string;
 
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
   age?: number;
 }
