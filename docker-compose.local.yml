@@ -1,0 +1,147 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# LOCAL GELISTIRME / TEST ORTAMI — tek komutla ayaga kalkar
+#
+#   docker compose -f docker-compose.local.yml up -d --build     (baslat)
+#   docker compose -f docker-compose.local.yml down              (durdur)
+#   docker compose -f docker-compose.local.yml down -v           (veriyi de sil)
+#
+# Ust klasorden (iki repoyu da iceren workspace) sadece `docker compose up -d`
+# yeterlidir; oradaki docker-compose.yml bu dosyayi include eder.
+#
+# Bu dosya PROD deploy'unu ETKILEMEZ. Sunucudaki `docker compose up --build -d`
+# varsayilan docker-compose.yml dosyasini okur, bunu degil.
+#
+# Ortam degiskenleri bilerek dosyanin icine gomuludur: temiz bir clone'da
+# hicbir .env hazirlamadan calisir. Buradaki degerler YALNIZCA local icindir,
+# gercek secret degildir.
+# ─────────────────────────────────────────────────────────────────────────────
+name: uut-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: uut_local_db
+    environment:
+      POSTGRES_USER: psiko
+      POSTGRES_PASSWORD: psiko1234
+      POSTGRES_DB: psikodb
+    ports:
+      - '5432:5432'
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U psiko -d psikodb']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  minio:
+    image: minio/minio:latest
+    container_name: uut_local_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: psikoadmin
+      MINIO_ROOT_PASSWORD: psiko_minio_2026
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # Web konsolu
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'mc ready local || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Semayi kurar ve seed verisini basar, sonra biter (uzun omurlu servis degil).
+  # `prisma migrate deploy` DEGIL `db push` kullaniyor: prisma/migrations su an
+  # schema.prisma'nin gerisinde (bkz. ci.yml migration-check notu). db push
+  # semayi birebir uygular, migration gecmisine dokunmaz.
+  db-init:
+    build:
+      context: .
+      target: builder # ts-node ve prisma CLI yalnizca builder katmaninda
+    container_name: uut_local_dbinit
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://psiko:psiko1234@postgres:5432/psikodb
+      DIRECT_URL: postgresql://psiko:psiko1234@postgres:5432/psikodb
+    command: >
+      sh -c "npx prisma db push --accept-data-loss --skip-generate &&
+             npx ts-node prisma/seed.ts &&
+             echo '--- sema kuruldu, seed basildi ---'"
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+    container_name: uut_local_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: '4000'
+      DATABASE_URL: postgresql://psiko:psiko1234@postgres:5432/psikodb
+      DIRECT_URL: postgresql://psiko:psiko1234@postgres:5432/psikodb
+      # Local'e ozel sabit degerler — gercek secret DEGIL.
+      JWT_ACCESS_SECRET: local-dev-access-secret-degistirmeye-gerek-yok
+      JWT_ACCESS_EXPIRES: 15m
+      JWT_REFRESH_SECRET: local-dev-refresh-secret-degistirmeye-gerek-yok
+      JWT_REFRESH_EXPIRES: 7d
+      FRONTEND_URL: http://localhost:3000
+      # Brevo bos: mail gonderilmez, log'a duser. Local icin istenen davranis.
+      BREVO_API_KEY: ''
+      BREVO_SENDER_NAME: Psiko Danismanlik (local)
+      BREVO_SENDER_EMAIL: noreply@localhost
+      BREVO_NEWSLETTER_LIST_ID: ''
+      ADMIN_NOTIFICATION_EMAIL: admin@psiko.com
+      MINIO_ENDPOINT: minio # konteyner agi icinden servis adi
+      MINIO_PORT: '9000'
+      MINIO_ROOT_USER: psikoadmin
+      MINIO_ROOT_PASSWORD: psiko_minio_2026
+      MINIO_BUCKET: psiko-uploads
+      MINIO_PUBLIC_URL: http://localhost:9000 # tarayici host uzerinden erisir
+    # Sema db-init'te kuruldu; burada tekrar migrate calistirilmaz.
+    command: ['node', 'dist/main']
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./uploads:/app/uploads
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:4000/health || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+
+  web:
+    build:
+      context: ../frontend # kardes klasordeki frontend reposu
+      args:
+        # Tarayicida calisan kod host portuna gider.
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+    container_name: uut_local_web
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Sunucu tarafi (SSR) istekleri konteyner agi uzerinden gider.
+      INTERNAL_API_URL: http://api:4000
+    ports:
+      - '3000:3000'
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 15s
+
+volumes:
+  db_data:
+  minio_data:

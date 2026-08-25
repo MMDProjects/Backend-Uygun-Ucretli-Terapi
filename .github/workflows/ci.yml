@@ -68,6 +68,18 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Jest hic test dosyasi bulamazsa yapilandirmaya gore sessizce yesil
+      # donebilir. Test kapisinin fark edilmeden yok olmasini engelleyen siper.
+      - name: Test dosyalari gercekten var mi
+        run: |
+          UNIT=$(find src -name '*.spec.ts' | wc -l)
+          E2E=$(find test -name '*.e2e-spec.ts' | wc -l)
+          echo "unit spec: $UNIT | e2e spec: $E2E"
+          if [ "$UNIT" -eq 0 ] || [ "$E2E" -eq 0 ]; then
+            echo "::error::Test dosyasi bulunamadi (unit=$UNIT e2e=$E2E). Test kapisi bos kosuyor."
+            exit 1
+          fi
+
       - name: Unit testler
         run: npm run test:ci
 
@@ -155,3 +167,46 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Compose seviyesinde entegrasyon: iki repo birlikte ayaga kalkiyor mu?
+  # Birim/e2e testleri prisma-mock kullaniyor; gercek Postgres + MinIO ile
+  # calisan kat yalnizca burada dogrulaniyor.
+  local-stack:
+    name: Local Stack Dogrulamasi
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: backend
+
+      # docker-compose.local.yml frontend'i ../frontend olarak build ediyor.
+      # Iki repo da public; ek token gerekmez.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: MMDProjects/Frontend-Uygun-Ucretli-Terapi
+          ref: test
+          path: frontend
+
+      - name: Stack'i ayaga kaldir
+        working-directory: backend
+        run: docker compose -f docker-compose.local.yml up -d --build --wait --wait-timeout 900
+
+      - name: Servisler yanit veriyor mu
+        run: |
+          curl -fsS --retry 10 --retry-delay 3 --retry-connrefused http://127.0.0.1:4000/health
+          echo
+          curl -fsS --retry 10 --retry-delay 3 --retry-connrefused -o /dev/null http://127.0.0.1:3000/
+          echo "frontend ana sayfa OK"
+          curl -fsS http://127.0.0.1:4000/packages | grep -q sessionCount && echo "seed verisi OK"
+
+      - name: Hata durumunda loglar
+        if: failure()
+        working-directory: backend
+        run: docker compose -f docker-compose.local.yml logs --tail=120
+
+      - name: Temizlik
+        if: always()
+        working-directory: backend
+        run: docker compose -f docker-compose.local.yml down -v
