@@ -5,7 +5,6 @@ import { createAuthTestApp } from './helpers/create-test-app';
 import {
   buildPrismaMock,
   MOCK_DANISAN_ID,
-  MOCK_UZMAN_ID,
   MOCK_EXPERT_PROFILE_ID,
   mockExpertProfile,
 } from './helpers/prisma-mock';
@@ -17,7 +16,10 @@ const AVAIL_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const mockPublicProfile = {
   ...mockExpertProfile(),
   user: { firstName: 'Dr. Ayse', lastName: 'Kara' },
-  tags: [{ id: 'tag-1', name: 'Anksiyete' }, { id: 'tag-2', name: 'Depresyon' }],
+  tags: [
+    { id: 'tag-1', name: 'Anksiyete' },
+    { id: 'tag-2', name: 'Depresyon' },
+  ],
   rating: 4.8,
 };
 
@@ -65,9 +67,7 @@ describe('Experts (e2e)', () => {
     it('should be accessible without auth token', async () => {
       prismaMock.$transaction.mockResolvedValue([[], 0]);
 
-      await request(app.getHttpServer())
-        .get('/experts')
-        .expect(200);
+      await request(app.getHttpServer()).get('/experts').expect(200);
     });
   });
 
@@ -120,7 +120,9 @@ describe('Experts (e2e)', () => {
 
   describe('GET /experts/me/profile', () => {
     it('should return my profile for authenticated UZMAN', async () => {
-      prismaMock.expertProfile.findUnique.mockResolvedValue(mockExpertProfile());
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
 
       const res = await request(app.getHttpServer())
         .get('/experts/me/profile')
@@ -131,9 +133,7 @@ describe('Experts (e2e)', () => {
     });
 
     it('should return 401 without token', async () => {
-      await request(app.getHttpServer())
-        .get('/experts/me/profile')
-        .expect(401);
+      await request(app.getHttpServer()).get('/experts/me/profile').expect(401);
     });
 
     it('should return 403 when DANISAN tries to access UZMAN profile endpoint', async () => {
@@ -148,9 +148,18 @@ describe('Experts (e2e)', () => {
 
   describe('GET /experts/me/availabilities', () => {
     it('should return availability slots for UZMAN', async () => {
-      prismaMock.expertProfile.findUnique.mockResolvedValue(mockExpertProfile());
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
       prismaMock.availability.findMany.mockResolvedValue([
-        { id: AVAIL_ID, dayOfWeek: 0, startTime: '09:00', endTime: '12:00', isBlockedByAdmin: false, expertProfileId: MOCK_EXPERT_PROFILE_ID },
+        {
+          id: AVAIL_ID,
+          dayOfWeek: 0,
+          startTime: '09:00',
+          endTime: '12:00',
+          isBlockedByAdmin: false,
+          expertProfileId: MOCK_EXPERT_PROFILE_ID,
+        },
       ]);
 
       const res = await request(app.getHttpServer())
@@ -171,10 +180,17 @@ describe('Experts (e2e)', () => {
   // ── POST /experts/me/availabilities (UZMAN) ───────────────────────────────────
 
   describe('POST /experts/me/availabilities', () => {
-    const validSlot = { dayOfWeek: 1, startTime: '09:00', endTime: '12:00' };
+    // CreateAvailabilityDto haftalik `dayOfWeek` yerine tarih bazli `date` bekliyor.
+    const validSlot = {
+      date: '2026-06-09',
+      startTime: '09:00',
+      endTime: '12:00',
+    };
 
     it('should add availability slot for UZMAN', async () => {
-      prismaMock.expertProfile.findUnique.mockResolvedValue(mockExpertProfile());
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
       prismaMock.availability.create.mockResolvedValue({
         id: AVAIL_ID,
         ...validSlot,
@@ -211,7 +227,9 @@ describe('Experts (e2e)', () => {
 
   describe('DELETE /experts/me/availabilities/:id', () => {
     it('should delete availability slot', async () => {
-      prismaMock.expertProfile.findUnique.mockResolvedValue(mockExpertProfile());
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
       prismaMock.availability.findUnique.mockResolvedValue({
         id: AVAIL_ID,
         expertProfileId: MOCK_EXPERT_PROFILE_ID,
@@ -228,7 +246,9 @@ describe('Experts (e2e)', () => {
     });
 
     it('should return 403 when slot does not exist (service guards owner/existence together)', async () => {
-      prismaMock.expertProfile.findUnique.mockResolvedValue(mockExpertProfile());
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
       prismaMock.availability.findUnique.mockResolvedValue(null);
 
       await request(app.getHttpServer())
@@ -297,14 +317,16 @@ describe('Experts (e2e)', () => {
 
   describe('POST /experts/:id/favorites', () => {
     it('should add expert to favorites for DANISAN (upsert semantics)', async () => {
-      prismaMock.expertProfile.findUnique.mockResolvedValue(mockExpertProfile());
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
       prismaMock.favorite.upsert.mockResolvedValue({
         id: 'fav-1111-1111-4111-8111-111111111111',
         userId: MOCK_DANISAN_ID,
         expertProfileId: MOCK_EXPERT_PROFILE_ID,
       });
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post(`/experts/${MOCK_EXPERT_PROFILE_ID}/favorites`)
         .set('Authorization', bearerHeader(danisanToken()))
         .expect(201);
@@ -341,7 +363,7 @@ describe('Experts (e2e)', () => {
     it('should remove expert from favorites (deleteMany semantics)', async () => {
       prismaMock.favorite.deleteMany.mockResolvedValue({ count: 1 });
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .delete(`/experts/${MOCK_EXPERT_PROFILE_ID}/favorites`)
         .set('Authorization', bearerHeader(danisanToken()))
         .expect(200);

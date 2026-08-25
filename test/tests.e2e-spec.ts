@@ -1,4 +1,4 @@
-﻿import { INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { TestsModule } from '../src/tests/tests.module';
 import { createAuthTestApp } from './helpers/create-test-app';
@@ -46,9 +46,7 @@ describe('Tests (e2e)', () => {
     it('should return active tests without auth', async () => {
       prismaMock.test.findMany.mockResolvedValue(mockTests);
 
-      const res = await request(app.getHttpServer())
-        .get('/tests')
-        .expect(200);
+      const res = await request(app.getHttpServer()).get('/tests').expect(200);
 
       expect(res.body).toHaveLength(2);
       expect(res.body[0]).toHaveProperty('title', 'Beck Anksiyete Ã–lÃ§eÄŸi');
@@ -60,9 +58,7 @@ describe('Tests (e2e)', () => {
     it('should return empty array when no active tests', async () => {
       prismaMock.test.findMany.mockResolvedValue([]);
 
-      const res = await request(app.getHttpServer())
-        .get('/tests')
-        .expect(200);
+      const res = await request(app.getHttpServer()).get('/tests').expect(200);
 
       expect(res.body).toEqual([]);
     });
@@ -84,13 +80,14 @@ describe('Tests (e2e)', () => {
     it('should return 404 when slug does not exist', async () => {
       prismaMock.test.findUnique.mockResolvedValue(null);
 
-      await request(app.getHttpServer())
-        .get('/tests/olmayan-test')
-        .expect(404);
+      await request(app.getHttpServer()).get('/tests/olmayan-test').expect(404);
     });
 
     it('should return 404 when test exists but is not active', async () => {
-      prismaMock.test.findUnique.mockResolvedValue({ ...mockTests[0], isActive: false });
+      prismaMock.test.findUnique.mockResolvedValue({
+        ...mockTests[0],
+        isActive: false,
+      });
 
       await request(app.getHttpServer())
         .get('/tests/beck-anksiyete-olcegi')
@@ -105,7 +102,8 @@ describe('Tests (e2e)', () => {
     const VALID_TEST_UUID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
     const validPayload = {
       testId: VALID_TEST_UUID,
-      scoreSummary: 'Orta duzey anksiyete (Skor: 42/80). Profesyonel destek onerilir.',
+      scoreSummary:
+        'Orta duzey anksiyete (Skor: 42/80). Profesyonel destek onerilir.',
     };
 
     it('should save test result for authenticated DANISAN', async () => {
@@ -181,7 +179,10 @@ describe('Tests (e2e)', () => {
           testId: 'test-1',
           scoreSummary: 'DÃ¼ÅŸÃ¼k anksiyete',
           createdAt: new Date('2024-06-01'),
-          test: { title: 'Beck Anksiyete Ã–lÃ§eÄŸi', slug: 'beck-anksiyete-olcegi' },
+          test: {
+            title: 'Beck Anksiyete Ã–lÃ§eÄŸi',
+            slug: 'beck-anksiyete-olcegi',
+          },
         },
       ];
       prismaMock.testResult.findMany.mockResolvedValue(mockHistory);
@@ -207,9 +208,7 @@ describe('Tests (e2e)', () => {
     });
 
     it('should return 401 when no token provided', async () => {
-      await request(app.getHttpServer())
-        .get('/tests/history/me')
-        .expect(401);
+      await request(app.getHttpServer()).get('/tests/history/me').expect(401);
     });
 
     it('should return 403 when UZMAN tries to access danisan history', async () => {

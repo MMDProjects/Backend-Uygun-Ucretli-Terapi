@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Auth e2e testleri.
  * bcrypt.hash(12) yavaÅŸ olduÄŸundan, login testi iÃ§in Ã¶nceden hash hesaplanÄ±r.
  */
@@ -13,17 +13,28 @@ import * as bcrypt from 'bcrypt';
 
 import { AuthModule } from '../src/auth/auth.module';
 import { PrismaModule } from '../src/prisma/prisma.module';
+import { StorageModule } from '../src/storage/storage.module';
+import { StorageService } from '../src/storage/storage.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { MailService } from '../src/mail/mail.service';
 import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
 import { RolesGuard } from '../src/common/guards/roles.guard';
-import { buildPrismaMock, MOCK_DANISAN_ID, mockDanisanUser } from './helpers/prisma-mock';
-import { TEST_JWT_SECRET, danisanToken, bearerHeader } from './helpers/auth.helper';
+import {
+  buildPrismaMock,
+  MOCK_DANISAN_ID,
+  mockDanisanUser,
+} from './helpers/prisma-mock';
+import {
+  TEST_JWT_SECRET,
+  danisanToken,
+  bearerHeader,
+} from './helpers/auth.helper';
+import { buildMailMock } from './helpers/create-test-app';
 
 // ENV â€” JwtStrategy constructor'da okunur, compile Ã¶ncesi set edilmeli
-process.env.JWT_ACCESS_SECRET   = TEST_JWT_SECRET;
-process.env.JWT_REFRESH_SECRET  = 'test-refresh-secret';
-process.env.JWT_ACCESS_EXPIRES  = '15m';
+process.env.JWT_ACCESS_SECRET = TEST_JWT_SECRET;
+process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
+process.env.JWT_ACCESS_EXPIRES = '15m';
 process.env.JWT_REFRESH_EXPIRES = '7d';
 
 describe('Auth (e2e)', () => {
@@ -31,11 +42,7 @@ describe('Auth (e2e)', () => {
   let prismaMock: ReturnType<typeof buildPrismaMock>;
   let validPasswordHash: string;
 
-  const mailMock = {
-    sendPasswordReset: jest.fn().mockResolvedValue(undefined),
-    sendContactConfirmation: jest.fn().mockResolvedValue(undefined),
-    sendWelcome: jest.fn().mockResolvedValue(undefined),
-  };
+  const mailMock = buildMailMock();
 
   const validRegisterPayload = {
     firstName: 'Ahmet',
@@ -63,7 +70,8 @@ describe('Auth (e2e)', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
-        PrismaModule,   // @Global() — makes PrismaService available; overrideProvider replaces it
+        PrismaModule, // @Global() — makes PrismaService available; overrideProvider replaces it
+        StorageModule, // @Global() — StorageService (MinIO) mock'lanir
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.register({}),
         AuthModule,
@@ -77,10 +85,22 @@ describe('Auth (e2e)', () => {
       .useValue(prismaMock)
       .overrideProvider(MailService)
       .useValue(mailMock)
+      .overrideProvider(StorageService)
+      .useValue({
+        upload: jest
+          .fn()
+          .mockResolvedValue(
+            'http://localhost:9000/psiko-uploads/test-file.png',
+          ),
+        deleteByUrl: jest.fn().mockResolvedValue(undefined),
+        onModuleInit: jest.fn().mockResolvedValue(undefined),
+      })
       .compile();
 
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
