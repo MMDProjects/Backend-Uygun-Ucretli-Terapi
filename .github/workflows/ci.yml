@@ -173,7 +173,8 @@ jobs:
   # calisan kat yalnizca burada dogrulaniyor.
   local-stack:
     name: Local Stack Dogrulamasi
-    if: github.event_name == 'pull_request'
+    # PR'larda otomatik; ayrica elle tetiklenebilir (stack'i tek tikla dogrulama)
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
