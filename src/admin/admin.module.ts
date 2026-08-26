@@ -9,7 +9,13 @@ import { ExpertRequestsModule } from '../requests/expert-requests.module';
 import { ForumModule } from '../forum/forum.module';
 
 @Module({
-  imports: [NotificationsModule, MailModule, CommentsModule, ExpertRequestsModule, ForumModule],
+  imports: [
+    NotificationsModule,
+    MailModule,
+    CommentsModule,
+    ExpertRequestsModule,
+    ForumModule,
+  ],
   controllers: [AdminController],
   providers: [AdminService, AppService],
 })

@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Guncellemeler entegrasyon dalina duser, main'e degil.
+    target-branch: test
+    open-pull-requests-limit: 5
+    groups:
+      nestjs:
+        patterns: ['@nestjs/*']
+      prisma:
+        patterns: ['prisma', '@prisma/*']
+      types:
+        patterns: ['@types/*']
+      lint:
+        patterns: ['eslint*', '@typescript-eslint/*', 'prettier*']
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: test
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: test
+    open-pull-requests-limit: 3

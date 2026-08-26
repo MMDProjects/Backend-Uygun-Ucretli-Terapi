@@ -1,6 +1,25 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, ParseUUIDPipe, UseInterceptors, UploadedFile } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  ParseUUIDPipe,
+  UseInterceptors,
+  UploadedFile,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -42,7 +61,10 @@ export class BlogsController {
   @Roles('UZMAN')
   @Post()
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Blog oluştur', description: 'TASLAK statüsünde oluşur, admin onayı gerekir.' })
+  @ApiOperation({
+    summary: 'Blog oluştur',
+    description: 'TASLAK statüsünde oluşur, admin onayı gerekir.',
+  })
   @ApiResponse({ status: 201, description: 'Blog oluşturuldu' })
   create(@CurrentUser() user: User, @Body() dto: CreateBlogDto) {
     return this.blogsService.create(user, dto);
@@ -51,9 +73,16 @@ export class BlogsController {
   @Roles('UZMAN')
   @Patch(':id')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Blog güncelle', description: 'Güncelleme ONAY_BEKLIYOR statüsüne düşürür.' })
+  @ApiOperation({
+    summary: 'Blog güncelle',
+    description: 'Güncelleme ONAY_BEKLIYOR statüsüne düşürür.',
+  })
   @ApiParam({ name: 'id', description: 'Blog UUID' })
-  update(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: Partial<CreateBlogDto>) {
+  update(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: Partial<CreateBlogDto>,
+  ) {
     return this.blogsService.update(user, id, dto);
   }
 
@@ -71,7 +100,9 @@ export class BlogsController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Blog kapak fotoğrafı yükle' })
   @ApiParam({ name: 'id', description: 'Blog UUID' })
-  @UseInterceptors(FileInterceptor('cover', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('cover', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
   uploadCover(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,

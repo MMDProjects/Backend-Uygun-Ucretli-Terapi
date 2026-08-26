@@ -1,5 +1,11 @@
 import { Controller, Get, Patch, Param, Query, Sse } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 import { NotificationsService } from './notifications.service';
 import { SseService } from './sse.service';
@@ -16,9 +22,19 @@ export class NotificationsController {
 
   @Sse('stream')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'SSE bildirim akışı', description: 'EventSource ile bağlanılır. Admin DANGER_PANIC gönderdiğinde anlık pop-up tetiklenir. text/event-stream döner.' })
-  @ApiResponse({ status: 200, description: '{ type: "notification", data: { type, message, id } }' })
-  stream(@CurrentUser() user: User, @Param() _: unknown): Observable<{ data: unknown }> {
+  @ApiOperation({
+    summary: 'SSE bildirim akışı',
+    description:
+      'EventSource ile bağlanılır. Admin DANGER_PANIC gönderdiğinde anlık pop-up tetiklenir. text/event-stream döner.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '{ type: "notification", data: { type, message, id } }',
+  })
+  stream(
+    @CurrentUser() user: User,
+    @Param() _: unknown,
+  ): Observable<{ data: unknown }> {
     return this.sseService.register(user.id).asObservable();
   }
 

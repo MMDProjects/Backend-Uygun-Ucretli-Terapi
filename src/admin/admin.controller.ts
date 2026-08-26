@@ -13,7 +13,12 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { AdminService, getThisMonday } from './admin.service';
 import { AppService } from '../app.service';
 import { UpdateExpertStatusDto } from './dto/update-expert-status.dto';
@@ -26,7 +31,17 @@ import { UpsertPackageDto } from './dto/upsert-package.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AssignQuestionDto } from '../forum/dto/assign-question.dto';
 import { RequestStatus, ApprovalStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MinLength, IsArray, IsBoolean, IsObject, IsNumber, IsInt, Min, Max } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+  IsArray,
+  IsBoolean,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 class UpdateBlogStatusDto {
@@ -143,28 +158,44 @@ export class AdminController {
   }
 
   @Patch('experts/:id/status')
-  updateExpertStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateExpertStatusDto) {
+  updateExpertStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateExpertStatusDto,
+  ) {
     return this.adminService.updateExpertStatus(id, dto);
   }
 
   @Patch('experts/:id/priority')
-  updateExpertPriority(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PriorityDto) {
+  updateExpertPriority(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PriorityDto,
+  ) {
     return this.adminService.updateExpertPriority(id, dto.priorityScore);
   }
 
   @Patch('experts/:id/publish')
   @ApiOperation({ summary: 'Uzmanı yayına al / yayından kaldır' })
-  toggleExpertPublish(@Param('id', ParseUUIDPipe) id: string, @Body() dto: TogglePublishDto) {
+  toggleExpertPublish(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TogglePublishDto,
+  ) {
     return this.adminService.toggleExpertPublish(id, dto.isPublished);
   }
 
   @Patch('experts/:id/pricing')
-  @ApiOperation({ summary: 'Uzmana özel fiyat ata (null = global fiyat kullan)' })
+  @ApiOperation({
+    summary: 'Uzmana özel fiyat ata (null = global fiyat kullan)',
+  })
   updateExpertPricing(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: { standardPrice: number | null; discountedPrice: number | null },
+    @Body()
+    dto: { standardPrice: number | null; discountedPrice: number | null },
   ) {
-    return this.adminService.updateExpertPricing(id, dto.standardPrice, dto.discountedPrice);
+    return this.adminService.updateExpertPricing(
+      id,
+      dto.standardPrice,
+      dto.discountedPrice,
+    );
   }
 
   @Delete('experts/:id')
@@ -192,7 +223,10 @@ export class AdminController {
   }
 
   @Patch('availabilities/:id/block')
-  blockAvailability(@Param('id', ParseUUIDPipe) id: string, @Body() dto: BlockDto) {
+  blockAvailability(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BlockDto,
+  ) {
     return this.adminService.blockAvailability(id, dto.block);
   }
 
@@ -209,7 +243,16 @@ export class AdminController {
   }
 
   @Post('blogs')
-  createBlog(@Body() dto: { title: string; slug: string; content: string; authorName: string; coverImageUrl?: string }) {
+  createBlog(
+    @Body()
+    dto: {
+      title: string;
+      slug: string;
+      content: string;
+      authorName: string;
+      coverImageUrl?: string;
+    },
+  ) {
     return this.adminService.createAdminBlog(dto);
   }
 
@@ -230,7 +273,9 @@ export class AdminController {
   }
 
   @Post('blogs/:id/cover')
-  @UseInterceptors(FileInterceptor('cover', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('cover', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
   uploadAdminBlogCover(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
@@ -310,7 +355,10 @@ export class AdminController {
   }
 
   @Put('packages/:id')
-  updatePackage(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpsertPackageDto) {
+  updatePackage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpsertPackageDto,
+  ) {
     return this.adminService.updatePackage(id, dto);
   }
 
@@ -352,7 +400,11 @@ export class AdminController {
 
   // Danışan listesi
   @Get('users')
-  getUsers(@Query('page') page = '1', @Query('limit') limit = '20', @Query('search') search?: string) {
+  getUsers(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
+  ) {
     return this.adminService.getUsers(+page, +limit, search);
   }
 
@@ -384,7 +436,10 @@ export class AdminController {
   @Put('tests/:id')
   @ApiOperation({ summary: 'Test güncelle' })
   @ApiParam({ name: 'id', description: 'Test UUID' })
-  updateTest(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpsertTestDto) {
+  updateTest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpsertTestDto,
+  ) {
     return this.adminService.updateTest(id, dto);
   }
 
@@ -435,6 +490,9 @@ export class AdminController {
 
   @Post('content/kvkk')
   publishKvkkVersion(@Body() payload: KvkkContentUpdateDto) {
-    return this.appService.publishKvkkVersion(payload.version, payload.sections);
+    return this.appService.publishKvkkVersion(
+      payload.version,
+      payload.sections,
+    );
   }
 }

@@ -15,13 +15,20 @@ export class ContactService {
   async create(dto: CreateContactDto) {
     const form = await this.prisma.contactForm.create({ data: dto });
     await this.mail.sendContactConfirmation(dto.email, dto.fullName);
-    this.notifications.notifyAdmins('INFO', `Yeni iletişim formu: ${dto.fullName} — ${dto.subject}`).catch(() => {});
-    this.mail.sendNewContactFormAdmin({
-      fullName: dto.fullName,
-      email: dto.email,
-      subject: dto.subject,
-      message: dto.message,
-    }).catch(() => {});
+    this.notifications
+      .notifyAdmins(
+        'INFO',
+        `Yeni iletişim formu: ${dto.fullName} — ${dto.subject}`,
+      )
+      .catch(() => {});
+    this.mail
+      .sendNewContactFormAdmin({
+        fullName: dto.fullName,
+        email: dto.email,
+        subject: dto.subject,
+        message: dto.message,
+      })
+      .catch(() => {});
     return { message: 'Mesajınız alındı', id: form.id };
   }
 }

@@ -1,4 +1,4 @@
-﻿import { INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { ContactModule } from '../src/contact/contact.module';
 import { createPublicTestApp } from './helpers/create-test-app';
@@ -32,7 +32,11 @@ describe('Contact (e2e)', () => {
 
   describe('POST /contact', () => {
     it('should create contact form and return message + id', async () => {
-      const mockForm = { id: 'form-uuid-1', ...validContactPayload, createdAt: new Date() };
+      const mockForm = {
+        id: 'form-uuid-1',
+        ...validContactPayload,
+        createdAt: new Date(),
+      };
       prismaMock.contactForm.create.mockResolvedValue(mockForm);
 
       const res = await request(app.getHttpServer())
@@ -92,7 +96,11 @@ describe('Contact (e2e)', () => {
         companyName: 'ABC A.Å.',
         employeeCount: '50-100',
       };
-      const mockForm = { id: 'form-uuid-2', ...corpPayload, createdAt: new Date() };
+      const mockForm = {
+        id: 'form-uuid-2',
+        ...corpPayload,
+        createdAt: new Date(),
+      };
       prismaMock.contactForm.create.mockResolvedValue(mockForm);
 
       const res = await request(app.getHttpServer())
@@ -104,7 +112,10 @@ describe('Contact (e2e)', () => {
     });
 
     it('should be accessible without auth token (public endpoint)', async () => {
-      prismaMock.contactForm.create.mockResolvedValue({ id: 'x', ...validContactPayload });
+      prismaMock.contactForm.create.mockResolvedValue({
+        id: 'x',
+        ...validContactPayload,
+      });
 
       await request(app.getHttpServer())
         .post('/contact')

@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, MinLength } from 'class-validator';
 
 export class ResetPasswordDto {
-  @ApiProperty({ description: 'E-posta ile gelen sıfırlama token\'ı' })
+  @ApiProperty({ description: "E-posta ile gelen sıfırlama token'ı" })
   @IsString()
   token: string;
 

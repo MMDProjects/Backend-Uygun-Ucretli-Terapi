@@ -52,7 +52,7 @@ async function createApp(): Promise<NestExpressApplication> {
       .setTitle('Psiko Danışmanlık API')
       .setDescription(
         'Psiko danışmanlık platformu backend API dokümantasyonu.\n\n' +
-          "**Auth:** Login endpoint'inden aldığın `accessToken` değerini sağ üstteki \"Authorize\" butonuna gir.",
+          '**Auth:** Login endpoint\'inden aldığın `accessToken` değerini sağ üstteki "Authorize" butonuna gir.',
       )
       .setVersion('1.0')
       .addBearerAuth(

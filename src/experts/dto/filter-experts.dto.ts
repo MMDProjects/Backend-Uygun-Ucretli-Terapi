@@ -3,7 +3,10 @@ import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class FilterExpertsDto {
-  @ApiPropertyOptional({ example: 'uuid1,uuid2', description: 'Virgülle ayrılmış etiket UUID listesi' })
+  @ApiPropertyOptional({
+    example: 'uuid1,uuid2',
+    description: 'Virgülle ayrılmış etiket UUID listesi',
+  })
   @IsOptional()
   @IsString()
   tags?: string;

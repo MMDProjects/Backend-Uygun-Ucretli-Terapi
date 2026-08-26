@@ -5,14 +5,19 @@ import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private prisma: PrismaService, private sse: SseService) {}
+  constructor(
+    private prisma: PrismaService,
+    private sse: SseService,
+  ) {}
 
   async notifyAdmins(type: NotificationType, message: string) {
     const admins = await this.prisma.user.findMany({
       where: { role: 'ADMIN' },
       select: { id: true },
     });
-    await Promise.all(admins.map((a) => this.send(a.id, type, message).catch(() => {})));
+    await Promise.all(
+      admins.map((a) => this.send(a.id, type, message).catch(() => {})),
+    );
   }
 
   async send(userId: string, type: NotificationType, message: string) {
@@ -20,7 +25,10 @@ export class NotificationsService {
       data: { userId, type, message },
     });
 
-    this.sse.emit(userId, { data: { type, message, id: notification.id }, type: 'notification' });
+    this.sse.emit(userId, {
+      data: { type, message, id: notification.id },
+      type: 'notification',
+    });
     return notification;
   }
 

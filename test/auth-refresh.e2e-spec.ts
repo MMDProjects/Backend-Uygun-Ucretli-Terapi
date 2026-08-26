@@ -22,14 +22,18 @@ import { StorageModule } from '../src/storage/storage.module';
 import { StorageService } from '../src/storage/storage.service';
 import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
 import { RolesGuard } from '../src/common/guards/roles.guard';
-import { buildPrismaMock, MOCK_DANISAN_ID, mockDanisanUser } from './helpers/prisma-mock';
+import {
+  buildPrismaMock,
+  MOCK_DANISAN_ID,
+  mockDanisanUser,
+} from './helpers/prisma-mock';
 import { TEST_JWT_SECRET } from './helpers/auth.helper';
 import { REFRESH_GRACE_MS } from '../src/auth/auth.constants';
 
 // ENV — strategy constructor'ları compile öncesi okur
-process.env.JWT_ACCESS_SECRET   = TEST_JWT_SECRET;
-process.env.JWT_REFRESH_SECRET  = 'test-refresh-secret';
-process.env.JWT_ACCESS_EXPIRES  = '15m';
+process.env.JWT_ACCESS_SECRET = TEST_JWT_SECRET;
+process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
+process.env.JWT_ACCESS_EXPIRES = '15m';
 process.env.JWT_REFRESH_EXPIRES = '7d';
 
 /** Geçerli imzalı refresh JWT üretir (jwt-refresh strategy imzayı doğrular). */
@@ -51,7 +55,10 @@ describe('Auth refresh rotation + grace window (e2e)', () => {
     sendWelcome: jest.fn().mockResolvedValue(undefined),
   };
 
-  function storedTokenRow(token: string, overrides: Record<string, unknown> = {}) {
+  function storedTokenRow(
+    token: string,
+    overrides: Record<string, unknown> = {},
+  ) {
     return {
       id: 'rt-1',
       token,
@@ -89,7 +96,9 @@ describe('Auth refresh rotation + grace window (e2e)', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
@@ -99,8 +108,11 @@ describe('Auth refresh rotation + grace window (e2e)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prismaMock.user.findUnique.mockImplementation(({ where }: { where: { id?: string } }) =>
-      Promise.resolve(where.id === MOCK_DANISAN_ID ? mockDanisanUser() : null),
+    prismaMock.user.findUnique.mockImplementation(
+      ({ where }: { where: { id?: string } }) =>
+        Promise.resolve(
+          where.id === MOCK_DANISAN_ID ? mockDanisanUser() : null,
+        ),
     );
     prismaMock.refreshToken.create.mockResolvedValue(
       storedTokenRow('new-refresh-token'),
