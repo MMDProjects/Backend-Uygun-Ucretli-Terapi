@@ -1,4 +1,10 @@
-import { IsString, IsInt, IsNumber, IsPositive, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsNumber,
+  IsPositive,
+  IsOptional,
+} from 'class-validator';
 
 export class UpsertPackageDto {
   @IsOptional()

@@ -139,6 +139,10 @@ export function buildPrismaMock() {
     forumAnswer: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      count: jest.fn(),
     },
     // ── Tags ─────────────────────────────────────────────────────────────────
     tag: {
@@ -151,7 +155,8 @@ export function buildPrismaMock() {
     // ── Transactions ──────────────────────────────────────────────────────────
     $transaction: jest.fn().mockImplementation((args: unknown) => {
       if (Array.isArray(args)) return Promise.all(args);
-      if (typeof args === 'function') return args({ ...buildPrismaMockShallow() });
+      if (typeof args === 'function')
+        return args({ ...buildPrismaMockShallow() });
       return Promise.resolve([]);
     }),
     $connect: jest.fn().mockResolvedValue(undefined),
@@ -173,9 +178,9 @@ function buildPrismaMockShallow() {
 // ── Fixture helpers ────────────────────────────────────────────────────────────
 
 // Valid UUID v4 format: xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx
-export const MOCK_DANISAN_ID        = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-export const MOCK_UZMAN_ID          = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-export const MOCK_ADMIN_ID          = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+export const MOCK_DANISAN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+export const MOCK_UZMAN_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+export const MOCK_ADMIN_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 export const MOCK_EXPERT_PROFILE_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
 export function mockDanisanUser(overrides = {}) {
@@ -185,7 +190,8 @@ export function mockDanisanUser(overrides = {}) {
     lastName: 'Yılmaz',
     email: 'danisan@test.com',
     phone: '05321234567',
-    passwordHash: '$2b$12$uPJZhTNGUjFqAFDUHT5X4.WSlq6dvqBJPQhcjCWBYA1J0/JT3Tgfe', // placeholder
+    passwordHash:
+      '$2b$12$uPJZhTNGUjFqAFDUHT5X4.WSlq6dvqBJPQhcjCWBYA1J0/JT3Tgfe', // placeholder
     role: 'DANISAN',
     isActive: true,
     kvkkConsent: true,

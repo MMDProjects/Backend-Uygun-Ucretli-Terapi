@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -13,7 +18,7 @@ import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { UpsertSssDto } from './dto/upsert-sss.dto';
 import { UpsertPackageDto } from './dto/upsert-package.dto';
-import { RequestStatus, ApprovalStatus, Prisma, Role } from '@prisma/client';
+import { RequestStatus, ApprovalStatus, Role } from '@prisma/client';
 
 /** Bugünün haftasının Pazartesisini döner */
 export function getThisMonday(): Date {
@@ -33,12 +38,18 @@ const DEFAULT_ANNOUNCEMENT_ITEMS = [
 ];
 
 const DEFAULT_WHEEL_SEGMENTS = [
-  { label: 'Ön Görüş.', description: 'Ücretsiz ön görüşme hakkı — 20 dk WhatsApp görüşmesi' },
+  {
+    label: 'Ön Görüş.',
+    description: 'Ücretsiz ön görüşme hakkı — 20 dk WhatsApp görüşmesi',
+  },
   { label: '%10 İnd.', description: 'İlk seansta %10 indirim fırsatı' },
   { label: 'Tekrar!', description: 'Bu sefer olmadı — bir daha dene!' },
   { label: 'Bedava!', description: 'Ücretsiz ilk seans hakkı kazandın' },
   { label: '%20 İnd.', description: 'İlk seansta %20 indirim fırsatı' },
-  { label: 'Sürpriz!', description: 'Özel sürpriz ödül — WhatsApp\'tan talep et' },
+  {
+    label: 'Sürpriz!',
+    description: "Özel sürpriz ödül — WhatsApp'tan talep et",
+  },
 ];
 
 @Injectable()
@@ -66,8 +77,12 @@ export class AdminService {
       pendingForumAnswers,
       newTestResults,
     ] = await this.prisma.$transaction([
-      this.prisma.expertProfile.count({ where: { status: 'ONAY_BEKLIYOR', isPublished: false } }),
-      this.prisma.expertProfile.count({ where: { status: { in: ['REVIZE_GONDERILDI', 'PROFIL_GUNCELLENDI'] } } }),
+      this.prisma.expertProfile.count({
+        where: { status: 'ONAY_BEKLIYOR', isPublished: false },
+      }),
+      this.prisma.expertProfile.count({
+        where: { status: { in: ['REVIZE_GONDERILDI', 'PROFIL_GUNCELLENDI'] } },
+      }),
       this.prisma.blog.count({ where: { status: 'ONAY_BEKLIYOR' } }),
       this.prisma.comment.count({ where: { isApproved: false } }),
       this.prisma.forumQuestion.count({ where: { status: 'ONAY_BEKLIYOR' } }),
@@ -96,7 +111,16 @@ export class AdminService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, isActive: true } },
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+              isActive: true,
+            },
+          },
           tags: true,
         },
       }),
@@ -109,7 +133,16 @@ export class AdminService {
     const expert = await this.prisma.expertProfile.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, isActive: true } },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            isActive: true,
+          },
+        },
         tags: true,
       },
     });
@@ -122,7 +155,9 @@ export class AdminService {
       throw new BadRequestException('Red durumunda açıklama zorunludur');
     }
 
-    const expert = await this.prisma.expertProfile.findUnique({ where: { id } });
+    const expert = await this.prisma.expertProfile.findUnique({
+      where: { id },
+    });
     if (!expert) throw new NotFoundException('Profil bulunamadı');
 
     const data: Record<string, unknown> = {
@@ -132,32 +167,65 @@ export class AdminService {
 
     if (dto.status === 'YAYINDA') {
       data.isPublished = true;
-      const pendingFirst = (expert as Record<string, unknown>).pendingFirstName as string | null | undefined;
-      const pendingLast = (expert as Record<string, unknown>).pendingLastName as string | null | undefined;
-      const pendingAvUrl = (expert as Record<string, unknown>).pendingAvatarUrl as string | null | undefined;
-      const isRevision = !!(expert.pendingBio || expert.pendingTitle || expert.pendingEducation || expert.pendingTagIds || expert.pendingCertificateUrl || expert.pendingCvUrl || pendingFirst || pendingLast || pendingAvUrl);
+      const pendingFirst = (expert as Record<string, unknown>)
+        .pendingFirstName as string | null | undefined;
+      const pendingLast = (expert as Record<string, unknown>)
+        .pendingLastName as string | null | undefined;
+      const pendingAvUrl = (expert as Record<string, unknown>)
+        .pendingAvatarUrl as string | null | undefined;
+      const isRevision = !!(
+        expert.pendingBio ||
+        expert.pendingTitle ||
+        expert.pendingEducation ||
+        expert.pendingTagIds ||
+        expert.pendingCertificateUrl ||
+        expert.pendingCvUrl ||
+        pendingFirst ||
+        pendingLast ||
+        pendingAvUrl
+      );
       if (pendingFirst || pendingLast) {
         const nameUpdate: Record<string, string> = {};
-        if (pendingFirst) { nameUpdate.firstName = pendingFirst; data.pendingFirstName = null; }
-        if (pendingLast) { nameUpdate.lastName = pendingLast; data.pendingLastName = null; }
-        await this.prisma.user.update({ where: { id: expert.userId }, data: nameUpdate });
+        if (pendingFirst) {
+          nameUpdate.firstName = pendingFirst;
+          data.pendingFirstName = null;
+        }
+        if (pendingLast) {
+          nameUpdate.lastName = pendingLast;
+          data.pendingLastName = null;
+        }
+        await this.prisma.user.update({
+          where: { id: expert.userId },
+          data: nameUpdate,
+        });
       }
-      if (expert.pendingBio) { data.bio = expert.pendingBio; data.pendingBio = null; }
-      if (expert.pendingTitle) { data.title = expert.pendingTitle; data.pendingTitle = null; }
-      if (expert.pendingEducation) { data.education = expert.pendingEducation; data.pendingEducation = null; }
+      if (expert.pendingBio) {
+        data.bio = expert.pendingBio;
+        data.pendingBio = null;
+      }
+      if (expert.pendingTitle) {
+        data.title = expert.pendingTitle;
+        data.pendingTitle = null;
+      }
+      if (expert.pendingEducation) {
+        data.education = expert.pendingEducation;
+        data.pendingEducation = null;
+      }
       if (expert.pendingTagIds) {
         const tagIds: string[] = JSON.parse(expert.pendingTagIds);
         data.tags = { set: tagIds.map((tid) => ({ id: tid })) };
         data.pendingTagIds = null;
       }
-      const pendingAvatar = (expert as Record<string, unknown>).pendingAvatarUrl as string | null | undefined;
+      const pendingAvatar = (expert as Record<string, unknown>)
+        .pendingAvatarUrl as string | null | undefined;
       if (pendingAvatar) {
         if (expert.avatarUrl) await this.storage.deleteByUrl(expert.avatarUrl);
         data.avatarUrl = pendingAvatar;
         data.pendingAvatarUrl = null;
       }
       if (expert.pendingCertificateUrl) {
-        if (expert.certificateUrl) await this.storage.deleteByUrl(expert.certificateUrl);
+        if (expert.certificateUrl)
+          await this.storage.deleteByUrl(expert.certificateUrl);
         data.certificateUrl = expert.pendingCertificateUrl;
         data.pendingCertificateUrl = null;
       }
@@ -174,14 +242,23 @@ export class AdminService {
           : 'Profiliniz onaylandı ve yayına alındı. Artık danışanlar tarafından görünüyorsunuz.',
       );
       // Mail (SSE'ye ek)
-      const approvedUser = await this.prisma.user.findUnique({ where: { id: expert.userId }, select: { email: true, firstName: true } });
-      if (approvedUser) this.mail.sendExpertProfileApproved(approvedUser.email, approvedUser.firstName).catch(() => {});
+      const approvedUser = await this.prisma.user.findUnique({
+        where: { id: expert.userId },
+        select: { email: true, firstName: true },
+      });
+      if (approvedUser)
+        this.mail
+          .sendExpertProfileApproved(approvedUser.email, approvedUser.firstName)
+          .catch(() => {});
     }
 
     if (dto.status === 'REDDEDILDI') {
-      if (expert.pendingCertificateUrl) await this.storage.deleteByUrl(expert.pendingCertificateUrl);
-      if (expert.pendingCvUrl) await this.storage.deleteByUrl(expert.pendingCvUrl);
-      const rejectAvatar = (expert as Record<string, unknown>).pendingAvatarUrl as string | null | undefined;
+      if (expert.pendingCertificateUrl)
+        await this.storage.deleteByUrl(expert.pendingCertificateUrl);
+      if (expert.pendingCvUrl)
+        await this.storage.deleteByUrl(expert.pendingCvUrl);
+      const rejectAvatar = (expert as Record<string, unknown>)
+        .pendingAvatarUrl as string | null | undefined;
       if (rejectAvatar) await this.storage.deleteByUrl(rejectAvatar);
       data.pendingAvatarUrl = null;
       data.pendingFirstName = null;
@@ -197,14 +274,22 @@ export class AdminService {
         `Profiliniz reddedildi. Admin notu: ${dto.adminNote}`,
       );
       // Mail (SSE'ye ek)
-      const rejectedUser = await this.prisma.user.findUnique({ where: { id: expert.userId }, select: { email: true, firstName: true } });
-      if (rejectedUser) this.mail.sendExpertProfileRejected(rejectedUser.email, rejectedUser.firstName, dto.adminNote ?? '').catch(() => {});
+      const rejectedUser = await this.prisma.user.findUnique({
+        where: { id: expert.userId },
+        select: { email: true, firstName: true },
+      });
+      if (rejectedUser)
+        this.mail
+          .sendExpertProfileRejected(
+            rejectedUser.email,
+            rejectedUser.firstName,
+            dto.adminNote ?? '',
+          )
+          .catch(() => {});
     }
 
     return this.prisma.expertProfile.update({ where: { id }, data });
   }
-
-
 
   async deleteExpert(id: string) {
     const expert = await this.prisma.expertProfile.findUnique({
@@ -217,11 +302,20 @@ export class AdminService {
   }
 
   async updateExpertPriority(id: string, priorityScore: number) {
-    return this.prisma.expertProfile.update({ where: { id }, data: { priorityScore } });
+    return this.prisma.expertProfile.update({
+      where: { id },
+      data: { priorityScore },
+    });
   }
 
-  async updateExpertPricing(id: string, standardPrice: number | null, discountedPrice: number | null) {
-    const expert = await this.prisma.expertProfile.findUnique({ where: { id } });
+  async updateExpertPricing(
+    id: string,
+    standardPrice: number | null,
+    discountedPrice: number | null,
+  ) {
+    const expert = await this.prisma.expertProfile.findUnique({
+      where: { id },
+    });
     if (!expert) throw new NotFoundException('Uzman bulunamadı');
     return this.prisma.expertProfile.update({
       where: { id },
@@ -242,15 +336,22 @@ export class AdminService {
   }
 
   async toggleExpertPublish(id: string, isPublished: boolean) {
-    const expert = await this.prisma.expertProfile.findUnique({ where: { id } });
+    const expert = await this.prisma.expertProfile.findUnique({
+      where: { id },
+    });
     if (!expert) throw new NotFoundException('Profil bulunamadı');
     // Yayına ALMA (false → true) yalnızca bir kez onaylanmış uzmanlar için geçerlidir.
     // Zaten yayında olan bir uzman revize göndermiş olsa bile (REVIZE_GONDERILDI veya ONAY_BEKLIYOR)
     // isPublished toggle'ı çalışmaya devam etmeli; sadece ilk kez yayına alma engellenir.
     if (isPublished && !expert.isPublished && expert.status !== 'YAYINDA') {
-      throw new BadRequestException('Yalnızca YAYINDA statüsündeki uzmanlar yayına alınabilir');
+      throw new BadRequestException(
+        'Yalnızca YAYINDA statüsündeki uzmanlar yayına alınabilir',
+      );
     }
-    return this.prisma.expertProfile.update({ where: { id }, data: { isPublished } });
+    return this.prisma.expertProfile.update({
+      where: { id },
+      data: { isPublished },
+    });
   }
 
   async getBlogs(page = 1, limit = 20) {
@@ -260,14 +361,24 @@ export class AdminService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: { expertProfile: { select: { user: { select: { firstName: true, lastName: true } } } } },
+        include: {
+          expertProfile: {
+            select: { user: { select: { firstName: true, lastName: true } } },
+          },
+        },
       }),
       this.prisma.blog.count(),
     ]);
     return { data, total, page, limit };
   }
 
-  async createAdminBlog(dto: { title: string; slug: string; content: string; authorName: string; coverImageUrl?: string }) {
+  async createAdminBlog(dto: {
+    title: string;
+    slug: string;
+    content: string;
+    authorName: string;
+    coverImageUrl?: string;
+  }) {
     return this.prisma.blog.create({
       data: {
         title: dto.title,
@@ -281,7 +392,10 @@ export class AdminService {
     });
   }
 
-  async updateBlogContent(id: string, dto: { title?: string; slug?: string; content?: string }) {
+  async updateBlogContent(
+    id: string,
+    dto: { title?: string; slug?: string; content?: string },
+  ) {
     const blog = await this.prisma.blog.findUnique({ where: { id } });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
     return this.prisma.blog.update({ where: { id }, data: dto });
@@ -295,7 +409,10 @@ export class AdminService {
       await this.storage.deleteByUrl(blog.coverImageUrl);
     }
     const url = await this.storage.upload('blog-covers', file, id);
-    return this.prisma.blog.update({ where: { id }, data: { coverImageUrl: url } });
+    return this.prisma.blog.update({
+      where: { id },
+      data: { coverImageUrl: url },
+    });
   }
 
   async deleteBlog(id: string) {
@@ -304,7 +421,11 @@ export class AdminService {
     return this.prisma.blog.delete({ where: { id } });
   }
 
-  async updateBlogStatus(id: string, status: ApprovalStatus, adminNote?: string) {
+  async updateBlogStatus(
+    id: string,
+    status: ApprovalStatus,
+    adminNote?: string,
+  ) {
     if (status === 'REDDEDILDI' && !adminNote) {
       throw new BadRequestException('Red durumunda açıklama zorunludur');
     }
@@ -314,14 +435,24 @@ export class AdminService {
     });
     if (!blog) throw new NotFoundException('Blog bulunamadı');
 
-    const updateData: Record<string, unknown> = { status, adminNote: adminNote ?? null };
+    const updateData: Record<string, unknown> = {
+      status,
+      adminNote: adminNote ?? null,
+    };
 
     if (status === 'YAYINDA') {
       // Revize onaylandıysa pending içeriği ana alanlara taşı
-      if (blog.pendingTitle) { updateData.title = blog.pendingTitle; updateData.pendingTitle = null; }
-      if (blog.pendingContent) { updateData.content = blog.pendingContent; updateData.pendingContent = null; }
+      if (blog.pendingTitle) {
+        updateData.title = blog.pendingTitle;
+        updateData.pendingTitle = null;
+      }
+      if (blog.pendingContent) {
+        updateData.content = blog.pendingContent;
+        updateData.pendingContent = null;
+      }
       if (blog.pendingCoverImageUrl) {
-        if (blog.coverImageUrl) await this.storage.deleteByUrl(blog.coverImageUrl);
+        if (blog.coverImageUrl)
+          await this.storage.deleteByUrl(blog.coverImageUrl);
         updateData.coverImageUrl = blog.pendingCoverImageUrl;
         updateData.pendingCoverImageUrl = null;
       }
@@ -342,8 +473,14 @@ export class AdminService {
         'INFO',
         `"${blog.title}" başlıklı blog yazınız onaylandı ve yayına alındı.`,
       );
-      const u = await this.prisma.user.findUnique({ where: { id: blog.expertProfile.userId }, select: { email: true, firstName: true } });
-      if (u) this.mail.sendBlogApproved(u.email, u.firstName, blog.title).catch(() => {});
+      const u = await this.prisma.user.findUnique({
+        where: { id: blog.expertProfile.userId },
+        select: { email: true, firstName: true },
+      });
+      if (u)
+        this.mail
+          .sendBlogApproved(u.email, u.firstName, blog.title)
+          .catch(() => {});
     }
     if (status === 'REDDEDILDI' && blog.expertProfile) {
       await this.notificationsService.send(
@@ -351,8 +488,14 @@ export class AdminService {
         'WARNING',
         `"${blog.title}" başlıklı blog yazınız reddedildi. Admin notu: ${adminNote}`,
       );
-      const u = await this.prisma.user.findUnique({ where: { id: blog.expertProfile.userId }, select: { email: true, firstName: true } });
-      if (u) this.mail.sendBlogRejected(u.email, u.firstName, blog.title, adminNote ?? '').catch(() => {});
+      const u = await this.prisma.user.findUnique({
+        where: { id: blog.expertProfile.userId },
+        select: { email: true, firstName: true },
+      });
+      if (u)
+        this.mail
+          .sendBlogRejected(u.email, u.firstName, blog.title, adminNote ?? '')
+          .catch(() => {});
     }
 
     return blog;
@@ -375,7 +518,9 @@ export class AdminService {
     }
 
     // wheelSegments boş/null ise default'ları DB'ye yaz ve dön
-    const segments = s.wheelSegments as { label: string; description: string }[] | null;
+    const segments = s.wheelSegments as
+      | { label: string; description: string }[]
+      | null;
     if (!segments || (Array.isArray(segments) && segments.length < 2)) {
       return this.prisma.systemSetting.update({
         where: { id: s.id },
@@ -391,22 +536,33 @@ export class AdminService {
     if (setting) {
       // Sadece gönderilen alanları güncelle — undefined alanlar mevcut değeri korumalı
       const patch: Record<string, unknown> = {};
-      if (dto.whatsappNumber !== undefined) patch.whatsappNumber = dto.whatsappNumber;
+      if (dto.whatsappNumber !== undefined)
+        patch.whatsappNumber = dto.whatsappNumber;
       if (dto.instagramUrl !== undefined) patch.instagramUrl = dto.instagramUrl;
-      if (dto.standardPrice !== undefined) patch.standardPrice = dto.standardPrice;
-      if (dto.discountedPrice !== undefined) patch.discountedPrice = dto.discountedPrice;
+      if (dto.standardPrice !== undefined)
+        patch.standardPrice = dto.standardPrice;
+      if (dto.discountedPrice !== undefined)
+        patch.discountedPrice = dto.discountedPrice;
       if (dto.logoUrl !== undefined) patch.logoUrl = dto.logoUrl;
       if (dto.videoUrl !== undefined) patch.videoUrl = dto.videoUrl;
-      if (dto.announcementItems !== undefined) patch.announcementItems = dto.announcementItems;
-      if (dto.wheelSegments !== undefined) patch.wheelSegments = dto.wheelSegments;
-      if (dto.wheelWinnerIndices !== undefined) patch.wheelWinnerIndices = dto.wheelWinnerIndices;
-      if (dto.loginPopupSettings !== undefined) patch.loginPopupSettings = dto.loginPopupSettings;
-      return this.prisma.systemSetting.update({ where: { id: setting.id }, data: patch });
+      if (dto.announcementItems !== undefined)
+        patch.announcementItems = dto.announcementItems;
+      if (dto.wheelSegments !== undefined)
+        patch.wheelSegments = dto.wheelSegments;
+      if (dto.wheelWinnerIndices !== undefined)
+        patch.wheelWinnerIndices = dto.wheelWinnerIndices;
+      if (dto.loginPopupSettings !== undefined)
+        patch.loginPopupSettings = dto.loginPopupSettings;
+      return this.prisma.systemSetting.update({
+        where: { id: setting.id },
+        data: patch,
+      });
     }
     return this.prisma.systemSetting.create({
       data: {
         whatsappNumber: dto.whatsappNumber ?? '+905000000000',
-        instagramUrl: dto.instagramUrl ?? 'https://instagram.com/psikodanismanlik',
+        instagramUrl:
+          dto.instagramUrl ?? 'https://instagram.com/psikodanismanlik',
         standardPrice: dto.standardPrice ?? 1500,
         discountedPrice: dto.discountedPrice ?? 1000,
         logoUrl: dto.logoUrl ?? '/uploads/logo.png',
@@ -417,7 +573,9 @@ export class AdminService {
   }
 
   async getPackages() {
-    return this.prisma.package.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+    return this.prisma.package.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    });
   }
 
   async updatePackage(id: string, dto: UpsertPackageDto) {
@@ -427,7 +585,9 @@ export class AdminService {
   }
 
   async getSss() {
-    return this.prisma.sss.findMany({ orderBy: [{ page: 'asc' }, { order: 'asc' }] });
+    return this.prisma.sss.findMany({
+      orderBy: [{ page: 'asc' }, { order: 'asc' }],
+    });
   }
 
   async createSss(dto: UpsertSssDto) {
@@ -444,10 +604,20 @@ export class AdminService {
   }
 
   async sendNotification(dto: SendNotificationDto) {
-    const result = await this.notificationsService.send(dto.userId, dto.type, dto.message);
+    const result = await this.notificationsService.send(
+      dto.userId,
+      dto.type,
+      dto.message,
+    );
     // R18: admin uyarısında email de gönder
-    const u = await this.prisma.user.findUnique({ where: { id: dto.userId }, select: { email: true, firstName: true } });
-    if (u) this.mail.sendAdminWarningToExpert(u.email, u.firstName, dto.message).catch(() => {});
+    const u = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+      select: { email: true, firstName: true },
+    });
+    if (u)
+      this.mail
+        .sendAdminWarningToExpert(u.email, u.firstName, dto.message)
+        .catch(() => {});
     return result;
   }
 
@@ -457,9 +627,17 @@ export class AdminService {
       orderBy: { createdAt: 'desc' },
       include: {
         user: { select: { firstName: true, lastName: true, email: true } },
-        expertProfile: { include: { user: { select: { firstName: true, lastName: true } } } },
+        expertProfile: {
+          include: { user: { select: { firstName: true, lastName: true } } },
+        },
         answers: {
-          include: { expertProfile: { include: { user: { select: { firstName: true, lastName: true } } } } },
+          include: {
+            expertProfile: {
+              include: {
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -467,11 +645,19 @@ export class AdminService {
   }
 
   async assignForumQuestion(id: string, expertProfileId: string) {
-    const result = await this.forumService.assignQuestion(id, { expertProfileId });
+    const result = await this.forumService.assignQuestion(id, {
+      expertProfileId,
+    });
 
     const [expertProfile, question] = await Promise.all([
-      this.prisma.expertProfile.findUnique({ where: { id: expertProfileId }, select: { userId: true } }),
-      this.prisma.forumQuestion.findUnique({ where: { id }, select: { title: true } }),
+      this.prisma.expertProfile.findUnique({
+        where: { id: expertProfileId },
+        select: { userId: true },
+      }),
+      this.prisma.forumQuestion.findUnique({
+        where: { id },
+        select: { title: true },
+      }),
     ]);
 
     if (expertProfile && question) {
@@ -486,7 +672,10 @@ export class AdminService {
   }
 
   async approveForumQuestion(id: string) {
-    return this.prisma.forumQuestion.update({ where: { id }, data: { status: 'ATANDI' } });
+    return this.prisma.forumQuestion.update({
+      where: { id },
+      data: { status: 'ATANDI' },
+    });
   }
 
   async approveForumAnswer(id: string) {
@@ -499,11 +688,13 @@ export class AdminService {
     });
     const result = await this.forumService.approveAnswer(id);
     if (answer?.expertProfile?.userId) {
-      this.notificationsService.send(
-        answer.expertProfile.userId,
-        'INFO',
-        `Forum cevabınız onaylandı: "${answer.question?.title ?? ''}"`,
-      ).catch(() => {});
+      this.notificationsService
+        .send(
+          answer.expertProfile.userId,
+          'INFO',
+          `Forum cevabınız onaylandı: "${answer.question?.title ?? ''}"`,
+        )
+        .catch(() => {});
     }
     return result;
   }
@@ -519,11 +710,13 @@ export class AdminService {
     });
     const result = await this.commentsService.approve(id);
     if (comment?.expertProfile?.userId) {
-      this.notificationsService.send(
-        comment.expertProfile.userId,
-        'INFO',
-        'Profilinize yeni bir yorum onaylandı ve yayına alındı.',
-      ).catch(() => {});
+      this.notificationsService
+        .send(
+          comment.expertProfile.userId,
+          'INFO',
+          'Profilinize yeni bir yorum onaylandı ve yayına alındı.',
+        )
+        .catch(() => {});
     }
     return result;
   }
@@ -542,7 +735,10 @@ export class AdminService {
     weekEnd.setHours(23, 59, 59, 999);
 
     return this.prisma.availability.findMany({
-      where: { expertProfileId: expertId, date: { gte: weekStart, lte: weekEnd } },
+      where: {
+        expertProfileId: expertId,
+        date: { gte: weekStart, lte: weekEnd },
+      },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
     });
   }
@@ -633,7 +829,8 @@ export class AdminService {
 
   async updateContactFormStatus(id: string, status: string) {
     const validStatuses = ['YENI', 'ISLEMDE', 'COZULDU'];
-    if (!validStatuses.includes(status)) throw new Error(`Geçersiz status: ${status}`);
+    if (!validStatuses.includes(status))
+      throw new Error(`Geçersiz status: ${status}`);
     return this.prisma.contactForm.update({
       where: { id },
       data: { status: status as any },
@@ -656,7 +853,13 @@ export class AdminService {
     }
   }
 
-  async createTest(dto: { title: string; slug: string; description: string; isActive?: boolean; definition?: Record<string, unknown> }) {
+  async createTest(dto: {
+    title: string;
+    slug: string;
+    description: string;
+    isActive?: boolean;
+    definition?: Record<string, unknown>;
+  }) {
     const slug = await this.uniqueSlug(dto.slug);
     return this.prisma.test.create({
       data: {
@@ -664,12 +867,23 @@ export class AdminService {
         slug,
         description: dto.description,
         isActive: dto.isActive ?? true,
-        ...(dto.definition !== undefined && { definition: dto.definition as any }),
+        ...(dto.definition !== undefined && {
+          definition: dto.definition as any,
+        }),
       },
     });
   }
 
-  async updateTest(id: string, dto: { title: string; slug: string; description: string; isActive?: boolean; definition?: Record<string, unknown> }) {
+  async updateTest(
+    id: string,
+    dto: {
+      title: string;
+      slug: string;
+      description: string;
+      isActive?: boolean;
+      definition?: Record<string, unknown>;
+    },
+  ) {
     const test = await this.prisma.test.findUnique({ where: { id } });
     if (!test) throw new NotFoundException('Test bulunamadı');
     const slug = await this.uniqueSlug(dto.slug, id);
@@ -680,7 +894,9 @@ export class AdminService {
         slug,
         description: dto.description,
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-        ...(dto.definition !== undefined && { definition: dto.definition as any }),
+        ...(dto.definition !== undefined && {
+          definition: dto.definition as any,
+        }),
       },
     });
   }
@@ -691,7 +907,12 @@ export class AdminService {
     return this.prisma.test.delete({ where: { id } });
   }
 
-  async getAdminTestResults(page = 1, limit = 20, testId?: string, search?: string) {
+  async getAdminTestResults(
+    page = 1,
+    limit = 20,
+    testId?: string,
+    search?: string,
+  ) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (testId) where.testId = testId;
@@ -721,8 +942,11 @@ export class AdminService {
   }
 
   async createExpertByAdmin(dto: CreateExpertByAdminDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (existing) throw new ConflictException('Bu e-posta adresi zaten kayıtlı');
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (existing)
+      throw new ConflictException('Bu e-posta adresi zaten kayıtlı');
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
@@ -737,6 +961,12 @@ export class AdminService {
         isActive: true,
         expertProfile: {
           create: {
+            // Admin uzman olustururken bu alanlar bilinmiyor; uzman kendi
+            // profilini doldurana kadar bos kalir. Onceden sema default'una
+            // birakilmisti, artik acikca gonderiliyor (bkz. migration notu).
+            title: '',
+            certificateUrl: '',
+            cvUrl: '',
             status: 'ONAY_BEKLIYOR',
             isPublished: false,
             createdByAdmin: true,
@@ -746,7 +976,9 @@ export class AdminService {
       include: { expertProfile: true },
     });
 
-    this.mail.sendWelcomeExpertByAdmin(user.email, user.firstName, dto.password).catch(() => {});
+    this.mail
+      .sendWelcomeExpertByAdmin(user.email, user.firstName, dto.password)
+      .catch(() => {});
 
     return {
       id: user.expertProfile!.id,
@@ -772,10 +1004,17 @@ export class AdminService {
 
     const data = await this.prisma.user.findMany({
       where,
-      select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true, createdAt: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
     return { data };
   }
-
 }

@@ -14,6 +14,10 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "incremental": true,
+    // Build info dist icinde tutulur. nest-cli `deleteOutDir: true` ile dist'i
+    // siliyor; build info disarida kalirsa derleyici "degisiklik yok" deyip
+    // hic emit etmiyor ve dist bos kaliyor.
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,

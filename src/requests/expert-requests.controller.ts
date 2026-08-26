@@ -1,7 +1,21 @@
-import { Controller, Post, Get, Patch, Body, Param, ParseUUIDPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  Param,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { IsEnum } from 'class-validator';
-import { RequestStatus } from '@prisma/client';
+import {} from '@prisma/client';
 import { ExpertRequestsService } from './expert-requests.service';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -42,13 +56,17 @@ export class ExpertRequestsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateMyRequestStatusDto,
   ) {
-    return this.service.updateMyRequestStatus(user.id, id, dto.status as RequestStatus);
+    return this.service.updateMyRequestStatus(user.id, id, dto.status);
   }
 
   @Roles('DANISAN')
   @Post(':id/requests')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Uzmana talep gönder', description: 'Uzman detay sayfasından gönderilen form. Talep BEKLEMEDE statüsüyle admin paneline düşer.' })
+  @ApiOperation({
+    summary: 'Uzmana talep gönder',
+    description:
+      'Uzman detay sayfasından gönderilen form. Talep BEKLEMEDE statüsüyle admin paneline düşer.',
+  })
   @ApiParam({ name: 'id', description: 'Uzman profil UUID' })
   @ApiResponse({ status: 201, description: 'Talep oluşturuldu' })
   @ApiResponse({ status: 404, description: 'Uzman bulunamadı' })

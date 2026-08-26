@@ -1,8 +1,12 @@
-﻿import { INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { NotificationsModule } from '../src/notifications/notifications.module';
 import { createAuthTestApp } from './helpers/create-test-app';
-import { buildPrismaMock, MOCK_DANISAN_ID, MOCK_UZMAN_ID } from './helpers/prisma-mock';
+import {
+  buildPrismaMock,
+  MOCK_DANISAN_ID,
+  MOCK_UZMAN_ID,
+} from './helpers/prisma-mock';
 import { danisanToken, uzmanToken, bearerHeader } from './helpers/auth.helper';
 
 const NOTIF_ID = 'notif-uuid-0000-0000-0000-000000000001';
@@ -71,16 +75,18 @@ describe('Notifications (e2e)', () => {
     });
 
     it('should return 401 when no auth token provided', async () => {
-      await request(app.getHttpServer())
-        .get('/notifications')
-        .expect(401);
+      await request(app.getHttpServer()).get('/notifications').expect(401);
     });
 
     it('should only return current user notifications (UZMAN)', async () => {
-      const uzmanNotif = { ...mockNotification, userId: MOCK_UZMAN_ID, id: 'notif-uzman' };
+      const uzmanNotif = {
+        ...mockNotification,
+        userId: MOCK_UZMAN_ID,
+        id: 'notif-uzman',
+      };
       prismaMock.notification.findMany.mockResolvedValue([uzmanNotif]);
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .get('/notifications')
         .set('Authorization', bearerHeader(uzmanToken()))
         .expect(200);
@@ -99,7 +105,7 @@ describe('Notifications (e2e)', () => {
     it('should mark notification as read for the owner', async () => {
       prismaMock.notification.updateMany.mockResolvedValue({ count: 1 });
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .patch(`/notifications/${NOTIF_ID}/read`)
         .set('Authorization', bearerHeader(danisanToken()))
         .expect(200);

@@ -1,13 +1,28 @@
-﻿import { INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { SssModule } from '../src/sss/sss.module';
 import { createPublicTestApp } from './helpers/create-test-app';
 import { buildPrismaMock } from './helpers/prisma-mock';
 
 const mockSssItems = [
-  { id: 'sss-1', question: 'Platform nasÄ±l Ã§alÄ±ÅŸÄ±r?', answer: 'Uzman seÃ§ip talep gÃ¶nderirsiniz.', page: 'GENEL' },
-  { id: 'sss-2', question: 'Gizlilik nasÄ±l korunur?', answer: 'KVKK kapsamÄ±nda tÃ¼m veriler ÅŸifrelenir.', page: 'GENEL' },
-  { id: 'sss-3', question: 'Testler Ã¼cretli mi?', answer: 'HayÄ±r, tamamen Ã¼cretsizdir.', page: 'TESTLER' },
+  {
+    id: 'sss-1',
+    question: 'Platform nasÄ±l Ã§alÄ±ÅŸÄ±r?',
+    answer: 'Uzman seÃ§ip talep gÃ¶nderirsiniz.',
+    page: 'GENEL',
+  },
+  {
+    id: 'sss-2',
+    question: 'Gizlilik nasÄ±l korunur?',
+    answer: 'KVKK kapsamÄ±nda tÃ¼m veriler ÅŸifrelenir.',
+    page: 'GENEL',
+  },
+  {
+    id: 'sss-3',
+    question: 'Testler Ã¼cretli mi?',
+    answer: 'HayÄ±r, tamamen Ã¼cretsizdir.',
+    page: 'TESTLER',
+  },
 ];
 
 describe('SSS (e2e)', () => {
@@ -32,9 +47,7 @@ describe('SSS (e2e)', () => {
     it('should return all active SSS when no page filter given', async () => {
       prismaMock.sss.findMany.mockResolvedValue(mockSssItems);
 
-      const res = await request(app.getHttpServer())
-        .get('/sss')
-        .expect(200);
+      const res = await request(app.getHttpServer()).get('/sss').expect(200);
 
       expect(res.body).toHaveLength(3);
       expect(res.body[0]).toHaveProperty('question');
@@ -51,7 +64,9 @@ describe('SSS (e2e)', () => {
 
       expect(res.body).toHaveLength(2);
       expect(prismaMock.sss.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ page: 'GENEL' }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ page: 'GENEL' }),
+        }),
       );
     });
 
@@ -80,9 +95,7 @@ describe('SSS (e2e)', () => {
     it('should be accessible without auth token (public endpoint)', async () => {
       prismaMock.sss.findMany.mockResolvedValue([]);
 
-      await request(app.getHttpServer())
-        .get('/sss')
-        .expect(200);
+      await request(app.getHttpServer()).get('/sss').expect(200);
     });
   });
 });

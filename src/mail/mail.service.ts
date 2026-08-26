@@ -10,7 +10,8 @@ export class MailService {
 
   private getClient(): BrevoClient | null {
     const apiKey = this.config.get<string>('BREVO_API_KEY');
-    if (!apiKey || apiKey === 'your-brevo-api-key' || apiKey === '') return null;
+    if (!apiKey || apiKey === 'your-brevo-api-key' || apiKey === '')
+      return null;
     return new BrevoClient({ apiKey });
   }
 
@@ -22,7 +23,11 @@ export class MailService {
   }
 
   private get adminEmail(): string {
-    return this.config.get('ADMIN_NOTIFICATION_EMAIL') ?? this.config.get('BREVO_SENDER_EMAIL') ?? '';
+    return (
+      this.config.get('ADMIN_NOTIFICATION_EMAIL') ??
+      this.config.get('BREVO_SENDER_EMAIL') ??
+      ''
+    );
   }
 
   private get frontendUrl(): string {
@@ -60,7 +65,12 @@ export class MailService {
     `;
   }
 
-  private async send(to: string, toName: string, subject: string, html: string) {
+  private async send(
+    to: string,
+    toName: string,
+    subject: string,
+    html: string,
+  ) {
     const client = this.getClient();
     if (!client) {
       this.logger.warn(`[DEV-MAIL] To: ${to} | Subject: ${subject}`);
@@ -92,7 +102,12 @@ export class MailService {
         Bu bağlantı <strong>30 dakika</strong> geçerlidir. Eğer bu talebi siz yapmadıysanız bu maili görmezden gelebilirsiniz.
       </p>
     `;
-    await this.send(email, name, 'Şifre Sıfırlama Talebi', this.buildEmailHtml('Şifrenizi Sıfırlayın', body));
+    await this.send(
+      email,
+      name,
+      'Şifre Sıfırlama Talebi',
+      this.buildEmailHtml('Şifrenizi Sıfırlayın', body),
+    );
   }
 
   // ─── İletişim Formu Onayı ─────────────────────────────────────────────────
@@ -105,12 +120,22 @@ export class MailService {
       </p>
       ${this.ctaButton('Uzmanları İncele', `${this.frontendUrl}/uzmanlar`)}
     `;
-    await this.send(email, name, 'Mesajınız Alındı', this.buildEmailHtml('Mesajınız Alındı', body));
+    await this.send(
+      email,
+      name,
+      'Mesajınız Alındı',
+      this.buildEmailHtml('Mesajınız Alındı', body),
+    );
   }
 
   // ─── Admin: Yeni İletişim Formu Bildirimi ─────────────────────────────────
 
-  async sendNewContactFormAdmin(data: { fullName: string; email: string; subject: string; message: string }) {
+  async sendNewContactFormAdmin(data: {
+    fullName: string;
+    email: string;
+    subject: string;
+    message: string;
+  }) {
     const adminMail = this.adminEmail;
     if (!adminMail) return;
     const body = `
@@ -123,7 +148,12 @@ export class MailService {
       </table>
       ${this.ctaButton('Admin Paneline Git', `${this.frontendUrl}/admin/formlar/talepler`)}
     `;
-    await this.send(adminMail, 'Admin', `Yeni İletişim Formu: ${data.subject}`, this.buildEmailHtml('Yeni İletişim Formu', body));
+    await this.send(
+      adminMail,
+      'Admin',
+      `Yeni İletişim Formu: ${data.subject}`,
+      this.buildEmailHtml('Yeni İletişim Formu', body),
+    );
   }
 
   // ─── Danışan Hoş Geldiniz ─────────────────────────────────────────────────
@@ -137,7 +167,12 @@ export class MailService {
       </p>
       ${this.ctaButton('Uzman Bul', `${this.frontendUrl}/uzmanlar`)}
     `;
-    await this.send(email, name, 'Platforma Hoş Geldiniz!', this.buildEmailHtml('Hoş Geldiniz 🎉', body));
+    await this.send(
+      email,
+      name,
+      'Platforma Hoş Geldiniz!',
+      this.buildEmailHtml('Hoş Geldiniz 🎉', body),
+    );
   }
 
   // ─── Admin: Yeni Uzman Başvurusu ──────────────────────────────────────────
@@ -153,7 +188,12 @@ export class MailService {
       </table>
       ${this.ctaButton('Başvuruyu İncele', `${this.frontendUrl}/admin/uzman-onay/basvurular`)}
     `;
-    await this.send(adminMail, 'Admin', 'Yeni Uzman Başvurusu', this.buildEmailHtml('Yeni Uzman Başvurusu', body));
+    await this.send(
+      adminMail,
+      'Admin',
+      'Yeni Uzman Başvurusu',
+      this.buildEmailHtml('Yeni Uzman Başvurusu', body),
+    );
   }
 
   // ─── Uzman Profil Onay ────────────────────────────────────────────────────
@@ -166,7 +206,12 @@ export class MailService {
       </p>
       ${this.ctaButton('Profilimi Görüntüle', `${this.frontendUrl}/uzman/profil`)}
     `;
-    await this.send(email, name, 'Profiliniz Onaylandı!', this.buildEmailHtml('Profiliniz Yayında 🎉', body));
+    await this.send(
+      email,
+      name,
+      'Profiliniz Onaylandı!',
+      this.buildEmailHtml('Profiliniz Yayında 🎉', body),
+    );
   }
 
   // ─── Blog Onay ─────────────────────────────────────────────────────────────
@@ -179,12 +224,22 @@ export class MailService {
       </p>
       ${this.ctaButton('Blog Yazımı Görüntüle', `${this.frontendUrl}/uzman/blog`)}
     `;
-    await this.send(email, name, `Blog yazınız yayında: "${blogTitle}"`, this.buildEmailHtml('Blog Yazınız Onaylandı 🎉', body));
+    await this.send(
+      email,
+      name,
+      `Blog yazınız yayında: "${blogTitle}"`,
+      this.buildEmailHtml('Blog Yazınız Onaylandı 🎉', body),
+    );
   }
 
   // ─── Blog Red ──────────────────────────────────────────────────────────────
 
-  async sendBlogRejected(email: string, name: string, blogTitle: string, adminNote: string) {
+  async sendBlogRejected(
+    email: string,
+    name: string,
+    blogTitle: string,
+    adminNote: string,
+  ) {
     const body = `
       <p style="color:#1a1a1a;line-height:1.7">Merhaba <strong>${name}</strong>,</p>
       <p style="color:#4a4a4a;line-height:1.7">
@@ -197,7 +252,12 @@ export class MailService {
       <p style="color:#4a4a4a;line-height:1.7">Düzeltip tekrar gönderebilirsiniz.</p>
       ${this.ctaButton('Blog Yazımı Düzenle', `${this.frontendUrl}/uzman/blog`)}
     `;
-    await this.send(email, name, `Blog yazınız hakkında bilgi: "${blogTitle}"`, this.buildEmailHtml('Blog Yazısı Güncellemesi Gerekli', body));
+    await this.send(
+      email,
+      name,
+      `Blog yazınız hakkında bilgi: "${blogTitle}"`,
+      this.buildEmailHtml('Blog Yazısı Güncellemesi Gerekli', body),
+    );
   }
 
   // ─── Admin Uyarı → Uzman (R18) ─────────────────────────────────────────────
@@ -211,12 +271,21 @@ export class MailService {
       </div>
       ${this.ctaButton('Bildirimlerime Git', `${this.frontendUrl}/uzman/bildirimler`)}
     `;
-    await this.send(email, name, 'Platform Yönetiminden Bildirim', this.buildEmailHtml('Yönetimden Mesajınız Var', body));
+    await this.send(
+      email,
+      name,
+      'Platform Yönetiminden Bildirim',
+      this.buildEmailHtml('Yönetimden Mesajınız Var', body),
+    );
   }
 
   // ─── Admin Tarafından Oluşturulan Uzman Hoş Geldiniz ─────────────────────
 
-  async sendWelcomeExpertByAdmin(email: string, name: string, password: string) {
+  async sendWelcomeExpertByAdmin(
+    email: string,
+    name: string,
+    password: string,
+  ) {
     const loginUrl = `${this.frontendUrl}/uzman/giris`;
     const body = `
       <p style="color:#1a1a1a;line-height:1.7">Merhaba <strong>${name}</strong>,</p>
@@ -235,12 +304,21 @@ export class MailService {
       </p>
       ${this.ctaButton('Giriş Yap ve Profilimi Tamamla', loginUrl)}
     `;
-    await this.send(email, name, 'Uzman hesabınız oluşturuldu — Platforma hoş geldiniz!', this.buildEmailHtml('Hesabınız Hazır', body));
+    await this.send(
+      email,
+      name,
+      'Uzman hesabınız oluşturuldu — Platforma hoş geldiniz!',
+      this.buildEmailHtml('Hesabınız Hazır', body),
+    );
   }
 
   // ─── Uzman Profil Red ─────────────────────────────────────────────────────
 
-  async sendExpertProfileRejected(email: string, name: string, adminNote: string) {
+  async sendExpertProfileRejected(
+    email: string,
+    name: string,
+    adminNote: string,
+  ) {
     const body = `
       <p style="color:#1a1a1a;line-height:1.7">Merhaba <strong>${name}</strong>,</p>
       <p style="color:#4a4a4a;line-height:1.7">
@@ -255,6 +333,11 @@ export class MailService {
       </p>
       ${this.ctaButton('Profili Düzenle', `${this.frontendUrl}/uzman/profil`)}
     `;
-    await this.send(email, name, 'Profiliniz Hakkında Bilgi', this.buildEmailHtml('Profil Güncellemesi Gerekli', body));
+    await this.send(
+      email,
+      name,
+      'Profiliniz Hakkında Bilgi',
+      this.buildEmailHtml('Profil Güncellemesi Gerekli', body),
+    );
   }
 }

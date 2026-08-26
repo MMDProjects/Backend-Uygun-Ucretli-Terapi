@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsNumber, IsPositive, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsPositive,
+  IsArray,
+} from 'class-validator';
 
 export class UpdateSystemSettingsDto {
   @IsOptional()

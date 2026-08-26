@@ -1,4 +1,4 @@
-﻿import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
@@ -8,6 +8,8 @@ import request from 'supertest';
 
 import { AdminModule } from '../src/admin/admin.module';
 import { PrismaModule } from '../src/prisma/prisma.module';
+import { StorageModule } from '../src/storage/storage.module';
+import { StorageService } from '../src/storage/storage.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { MailService } from '../src/mail/mail.service';
 import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
@@ -23,28 +25,31 @@ import {
   MOCK_DANISAN_ID,
   MOCK_UZMAN_ID,
 } from './helpers/prisma-mock';
-import { adminToken, danisanToken, uzmanToken, bearerHeader, TEST_JWT_SECRET } from './helpers/auth.helper';
+import {
+  adminToken,
+  danisanToken,
+  uzmanToken,
+  bearerHeader,
+  TEST_JWT_SECRET,
+} from './helpers/auth.helper';
+import { buildMailMock } from './helpers/create-test-app';
 
-process.env.JWT_ACCESS_SECRET   = TEST_JWT_SECRET;
-process.env.JWT_REFRESH_SECRET  = 'test-refresh-secret';
-process.env.JWT_ACCESS_EXPIRES  = '15m';
+process.env.JWT_ACCESS_SECRET = TEST_JWT_SECRET;
+process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
+process.env.JWT_ACCESS_EXPIRES = '15m';
 process.env.JWT_REFRESH_EXPIRES = '7d';
 
 // Valid UUID v4: xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx
 const BLOG_UUID = 'b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1';
-const SSS_UUID  = 'c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2';
-const PKG_UUID  = 'd3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3';
-const TAG_UUID  = 'e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e5';
+const SSS_UUID = 'c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2';
+const PKG_UUID = 'd3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3';
+const TAG_UUID = 'e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e5';
 
 describe('Admin (e2e)', () => {
   let app: INestApplication;
   let prismaMock: ReturnType<typeof buildPrismaMock>;
 
-  const mailMock = {
-    sendPasswordReset: jest.fn().mockResolvedValue(undefined),
-    sendContactConfirmation: jest.fn().mockResolvedValue(undefined),
-    sendWelcome: jest.fn().mockResolvedValue(undefined),
-  };
+  const mailMock = buildMailMock();
 
   beforeAll(async () => {
     prismaMock = buildPrismaMock();
@@ -52,9 +57,10 @@ describe('Admin (e2e)', () => {
     // JWT doÄŸrulama iÃ§in user.findUnique â€” rol tabanlÄ± mock
     prismaMock.user.findUnique.mockImplementation(
       ({ where }: { where: { id?: string; email?: string } }) => {
-        if (where.id === MOCK_ADMIN_ID)   return Promise.resolve(mockAdminUser());
-        if (where.id === MOCK_UZMAN_ID)   return Promise.resolve(mockUzmanUser());
-        if (where.id === MOCK_DANISAN_ID) return Promise.resolve(mockDanisanUser());
+        if (where.id === MOCK_ADMIN_ID) return Promise.resolve(mockAdminUser());
+        if (where.id === MOCK_UZMAN_ID) return Promise.resolve(mockUzmanUser());
+        if (where.id === MOCK_DANISAN_ID)
+          return Promise.resolve(mockDanisanUser());
         return Promise.resolve(null);
       },
     );
@@ -62,7 +68,8 @@ describe('Admin (e2e)', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
-        PrismaModule,   // @Global() — overrideProvider replaces PrismaService
+        PrismaModule, // @Global() — overrideProvider replaces PrismaService
+        StorageModule, // @Global() — StorageService (MinIO) mock'lanir
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.register({}),
         AdminModule,
@@ -77,10 +84,22 @@ describe('Admin (e2e)', () => {
       .useValue(prismaMock)
       .overrideProvider(MailService)
       .useValue(mailMock)
+      .overrideProvider(StorageService)
+      .useValue({
+        upload: jest
+          .fn()
+          .mockResolvedValue(
+            'http://localhost:9000/psiko-uploads/test-file.png',
+          ),
+        deleteByUrl: jest.fn().mockResolvedValue(undefined),
+        onModuleInit: jest.fn().mockResolvedValue(undefined),
+      })
       .compile();
 
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
@@ -93,9 +112,10 @@ describe('Admin (e2e)', () => {
     // JWT mock restore (clearAllMocks sÄ±fÄ±rlar)
     prismaMock.user.findUnique.mockImplementation(
       ({ where }: { where: { id?: string } }) => {
-        if (where.id === MOCK_ADMIN_ID)   return Promise.resolve(mockAdminUser());
-        if (where.id === MOCK_UZMAN_ID)   return Promise.resolve(mockUzmanUser());
-        if (where.id === MOCK_DANISAN_ID) return Promise.resolve(mockDanisanUser());
+        if (where.id === MOCK_ADMIN_ID) return Promise.resolve(mockAdminUser());
+        if (where.id === MOCK_UZMAN_ID) return Promise.resolve(mockUzmanUser());
+        if (where.id === MOCK_DANISAN_ID)
+          return Promise.resolve(mockDanisanUser());
         return Promise.resolve(null);
       },
     );
@@ -105,7 +125,9 @@ describe('Admin (e2e)', () => {
 
   describe('GET /admin/dashboard', () => {
     it('should return dashboard stats for ADMIN', async () => {
-      prismaMock.$transaction.mockResolvedValue([3, 2, 5, 1, 7]);
+      // AdminService.getDashboard() 8 metrigi tek $transaction icinde sayiyor;
+      // dizi sirasi servisteki destructuring ile birebir ayni olmali.
+      prismaMock.$transaction.mockResolvedValue([3, 4, 2, 5, 1, 7, 6, 9]);
 
       const res = await request(app.getHttpServer())
         .get('/admin/dashboard')
@@ -114,17 +136,18 @@ describe('Admin (e2e)', () => {
 
       expect(res.body).toMatchObject({
         pendingExperts: 3,
+        pendingProfileUpdates: 4,
         pendingBlogs: 2,
         pendingComments: 5,
         pendingQuestions: 1,
         newRequests: 7,
+        pendingForumAnswers: 6,
+        newTestResults: 9,
       });
     });
 
     it('should return 401 without auth token', async () => {
-      await request(app.getHttpServer())
-        .get('/admin/dashboard')
-        .expect(401);
+      await request(app.getHttpServer()).get('/admin/dashboard').expect(401);
     });
 
     it('should return 403 when UZMAN tries to access admin endpoint', async () => {
@@ -150,7 +173,12 @@ describe('Admin (e2e)', () => {
         id: MOCK_EXPERT_PROFILE_ID,
         title: 'Uzman Klinik Psikolog',
         status: 'YAYINDA',
-        user: { firstName: 'Dr. AyÅŸe', lastName: 'Kara', email: 'uzman@test.com', phone: '05331234567' },
+        user: {
+          firstName: 'Dr. AyÅŸe',
+          lastName: 'Kara',
+          email: 'uzman@test.com',
+          phone: '05331234567',
+        },
         tags: [],
       };
       prismaMock.$transaction.mockResolvedValue([[mockExpert], 1]);
@@ -180,7 +208,7 @@ describe('Admin (e2e)', () => {
       });
       prismaMock.notification.create.mockResolvedValue({ id: 'notif-1' });
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .patch(`/admin/experts/${MOCK_EXPERT_PROFILE_ID}/status`)
         .set('Authorization', bearerHeader(adminToken()))
         .send({ status: 'YAYINDA' })
@@ -202,7 +230,10 @@ describe('Admin (e2e)', () => {
         id: MOCK_EXPERT_PROFILE_ID,
         userId: MOCK_UZMAN_ID,
       });
-      prismaMock.expertProfile.update.mockResolvedValue({ id: MOCK_EXPERT_PROFILE_ID, status: 'REDDEDILDI' });
+      prismaMock.expertProfile.update.mockResolvedValue({
+        id: MOCK_EXPERT_PROFILE_ID,
+        status: 'REDDEDILDI',
+      });
       prismaMock.notification.create.mockResolvedValue({ id: 'notif-2' });
 
       await request(app.getHttpServer())
@@ -258,7 +289,10 @@ describe('Admin (e2e)', () => {
         expertProfileId: MOCK_EXPERT_PROFILE_ID,
         expertProfile: { userId: MOCK_UZMAN_ID },
       });
-      prismaMock.blog.update.mockResolvedValue({ id: BLOG_UUID, status: 'YAYINDA' });
+      prismaMock.blog.update.mockResolvedValue({
+        id: BLOG_UUID,
+        status: 'YAYINDA',
+      });
       prismaMock.notification.create.mockResolvedValue({ id: 'notif-3' });
 
       await request(app.getHttpServer())
@@ -356,7 +390,7 @@ describe('Admin (e2e)', () => {
     it('should create a new SSS entry', async () => {
       prismaMock.sss.create.mockResolvedValue({ id: SSS_UUID, ...validSss });
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post('/admin/sss')
         .set('Authorization', bearerHeader(adminToken()))
         .send(validSss)
@@ -401,7 +435,7 @@ describe('Admin (e2e)', () => {
         createdAt: new Date(),
       });
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post('/admin/notifications')
         .set('Authorization', bearerHeader(adminToken()))
         .send(validNotif)
@@ -451,9 +485,13 @@ describe('Admin (e2e)', () => {
 
   describe('POST /admin/tags', () => {
     it('should create a new tag', async () => {
-      prismaMock.tag.create.mockResolvedValue({ id: TAG_UUID, name: 'Yas', isActive: true });
+      prismaMock.tag.create.mockResolvedValue({
+        id: TAG_UUID,
+        name: 'Yas',
+        isActive: true,
+      });
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post('/admin/tags')
         .set('Authorization', bearerHeader(adminToken()))
         .send({ name: 'Yas' })

@@ -1,0 +1,204 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'fix/**'
+      - 'hotfix/**'
+      - 'chore/**'
+      - 'infra/**'
+  pull_request:
+    branches: [test, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # main dalina yalnizca test veya hotfix/* uzerinden terfi edilebilir.
+  promotion-guard:
+    name: Terfi Zinciri Kontrolu
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Kaynak dali dogrula
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            test|hotfix/*)
+              echo "OK: $HEAD_REF -> main" ;;
+            *)
+              echo "::error::main dalina yalnizca 'test' veya 'hotfix/*' dallarindan PR acilabilir. Gelen dal: $HEAD_REF"
+              exit 1 ;;
+          esac
+
+  backend-ci:
+    name: Backend CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Bagimliliklar
+        run: npm ci
+
+      # Prisma client uretilmeden lint/typecheck/test sahte hata verir.
+      # Gercek baglanti gerekmez; schema.prisma yeterlidir.
+      - name: Prisma client uret
+        run: npm run prisma:generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+
+      - name: Lint
+        run: npm run lint:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Jest hic test dosyasi bulamazsa yapilandirmaya gore sessizce yesil
+      # donebilir. Test kapisinin fark edilmeden yok olmasini engelleyen siper.
+      - name: Test dosyalari gercekten var mi
+        run: |
+          UNIT=$(find src -name '*.spec.ts' | wc -l)
+          E2E=$(find test -name '*.e2e-spec.ts' | wc -l)
+          echo "unit spec: $UNIT | e2e spec: $E2E"
+          if [ "$UNIT" -eq 0 ] || [ "$E2E" -eq 0 ]; then
+            echo "::error::Test dosyasi bulunamadi (unit=$UNIT e2e=$E2E). Test kapisi bos kosuyor."
+            exit 1
+          fi
+
+      - name: Unit testler
+        run: npm run test:ci
+
+      # e2e testleri prisma-mock kullanir; gercek veritabani gerekmez.
+      - name: E2E testler
+        run: npm run test:e2e:ci
+
+      - name: Build
+        run: npm run build
+
+  # schema.prisma ile migration klasoru arasindaki kaymayi yakalar.
+  migration-check:
+    name: Migration Kontrolu
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Migration'lar bos veritabanina uygulanabiliyor mu?
+      - name: Migration'lari uygula
+        run: npx prisma migrate deploy
+
+      # Uygulanan migration'lar schema.prisma ile ayni sonucu uretiyor mu?
+      # Uretmiyorsa: eksik migration var demektir.
+      - name: Schema kaymasi var mi
+        run: |
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code \
+          && echo "Kayma yok." \
+          || {
+            echo "::error::schema.prisma ile migration'lar ortusmuyor. 'npx prisma migrate dev' ile eksik migration'i uretin."
+            exit 1
+          }
+
+  docker-build:
+    name: Docker Imaj Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [backend-ci]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # Imaj push edilmez; amac VPS'te calisacak build'in kirik olmadigini
+      # deploy'dan ONCE dogrulamak.
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Compose seviyesinde entegrasyon: iki repo birlikte ayaga kalkiyor mu?
+  # Birim/e2e testleri prisma-mock kullaniyor; gercek Postgres + MinIO ile
+  # calisan kat yalnizca burada dogrulaniyor.
+  local-stack:
+    name: Local Stack Dogrulamasi
+    # PR'larda otomatik; ayrica elle tetiklenebilir (stack'i tek tikla dogrulama)
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: backend
+
+      # docker-compose.local.yml frontend'i ../frontend olarak build ediyor.
+      # Iki repo da public; ek token gerekmez.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: MMDProjects/Frontend-Uygun-Ucretli-Terapi
+          ref: test
+          path: frontend
+
+      - name: Stack'i ayaga kaldir
+        working-directory: backend
+        run: docker compose -f docker-compose.local.yml up -d --build --wait --wait-timeout 900
+
+      - name: Servisler yanit veriyor mu
+        run: |
+          curl -fsS --retry 10 --retry-delay 3 --retry-connrefused http://127.0.0.1:4000/health
+          echo
+          curl -fsS --retry 10 --retry-delay 3 --retry-connrefused -o /dev/null http://127.0.0.1:3000/
+          echo "frontend ana sayfa OK"
+          curl -fsS http://127.0.0.1:4000/packages | grep -q sessionCount && echo "seed verisi OK"
+
+      - name: Hata durumunda loglar
+        if: failure()
+        working-directory: backend
+        run: docker compose -f docker-compose.local.yml logs --tail=120
+
+      - name: Temizlik
+        if: always()
+        working-directory: backend
+        run: docker compose -f docker-compose.local.yml down -v

@@ -8,10 +8,15 @@ import { SubscribeDto } from './dto/subscribe.dto';
 export class NewsletterService {
   private readonly logger = new Logger(NewsletterService.name);
 
-  constructor(private prisma: PrismaService, private config: ConfigService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+  ) {}
 
   async subscribe(dto: SubscribeDto) {
-    const exists = await this.prisma.newsletter.findUnique({ where: { email: dto.email } });
+    const exists = await this.prisma.newsletter.findUnique({
+      where: { email: dto.email },
+    });
     if (exists) throw new ConflictException('Bu e-posta zaten kayıtlı');
 
     await this.prisma.newsletter.create({ data: { email: dto.email } });

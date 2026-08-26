@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsEmail, IsEnum, IsBoolean, IsOptional, Matches } from 'class-validator';
+import {
+  IsString,
+  IsEmail,
+  IsEnum,
+  IsBoolean,
+  IsOptional,
+  Matches,
+} from 'class-validator';
 import { ContactSubject } from '@prisma/client';
 
 export class CreateContactDto {
@@ -23,17 +30,27 @@ export class CreateContactDto {
   @IsString()
   message: string;
 
-  @ApiPropertyOptional({ example: false, default: false, description: 'Kurumsal başvuru mu?' })
+  @ApiPropertyOptional({
+    example: false,
+    default: false,
+    description: 'Kurumsal başvuru mu?',
+  })
   @IsBoolean()
   @IsOptional()
   isCorporate?: boolean;
 
-  @ApiPropertyOptional({ example: 'ABC A.Ş.', description: 'isCorporate true ise zorunlu' })
+  @ApiPropertyOptional({
+    example: 'ABC A.Ş.',
+    description: 'isCorporate true ise zorunlu',
+  })
   @IsOptional()
   @IsString()
   companyName?: string;
 
-  @ApiPropertyOptional({ example: '50-100', description: 'Çalışan sayısı aralığı' })
+  @ApiPropertyOptional({
+    example: '50-100',
+    description: 'Çalışan sayısı aralığı',
+  })
   @IsOptional()
   @IsString()
   employeeCount?: string;
@@ -43,7 +60,10 @@ export class CreateContactDto {
   @IsOptional()
   kvkkApproved?: boolean;
 
-  @ApiPropertyOptional({ example: 'uuid', description: 'Onaylanan KVKK versiyonu ID' })
+  @ApiPropertyOptional({
+    example: 'uuid',
+    description: 'Onaylanan KVKK versiyonu ID',
+  })
   @IsString()
   @IsOptional()
   kvkkVersionId?: string;

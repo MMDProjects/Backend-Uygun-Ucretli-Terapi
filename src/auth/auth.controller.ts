@@ -38,8 +38,15 @@ export class AuthController {
 
   @Public()
   @Post('register/danisan')
-  @ApiOperation({ summary: 'Danışan kaydı', description: 'Yeni bir danışan hesabı oluşturur ve token döner.' })
-  @ApiResponse({ status: 201, description: 'Kayıt başarılı', schema: { example: { accessToken: 'eyJ...', refreshToken: 'eyJ...' } } })
+  @ApiOperation({
+    summary: 'Danışan kaydı',
+    description: 'Yeni bir danışan hesabı oluşturur ve token döner.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Kayıt başarılı',
+    schema: { example: { accessToken: 'eyJ...', refreshToken: 'eyJ...' } },
+  })
   @ApiResponse({ status: 409, description: 'E-posta zaten kayıtlı' })
   registerDanisan(@Body() dto: RegisterDanisanDto) {
     return this.authService.registerDanisan(dto);
@@ -47,12 +54,26 @@ export class AuthController {
 
   @Public()
   @Post('register/uzman')
-  @ApiOperation({ summary: 'Uzman kaydı (PDF upload)', description: 'Sertifika ve CV PDF zorunludur. multipart/form-data ile gönderilmeli.' })
+  @ApiOperation({
+    summary: 'Uzman kaydı (PDF upload)',
+    description:
+      'Sertifika ve CV PDF zorunludur. multipart/form-data ile gönderilmeli.',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['firstName', 'lastName', 'email', 'phone', 'password', 'title', 'kvkkConsent', 'certificate', 'cv'],
+      required: [
+        'firstName',
+        'lastName',
+        'email',
+        'phone',
+        'password',
+        'title',
+        'kvkkConsent',
+        'certificate',
+        'cv',
+      ],
       properties: {
         firstName: { type: 'string', example: 'Dr. Ayşe' },
         lastName: { type: 'string', example: 'Kara' },
@@ -61,13 +82,28 @@ export class AuthController {
         password: { type: 'string', example: 'Sifre1234!' },
         title: { type: 'string', example: 'Uzman Klinik Psikolog' },
         kvkkConsent: { type: 'boolean', example: true },
-        tagIds: { type: 'array', items: { type: 'string' }, description: 'Etiket UUID listesi (opsiyonel, min 2 max 5)' },
-        certificate: { type: 'string', format: 'binary', description: 'Sertifika PDF (max 10MB)' },
-        cv: { type: 'string', format: 'binary', description: 'CV PDF (max 10MB)' },
+        tagIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Etiket UUID listesi (opsiyonel, min 2 max 5)',
+        },
+        certificate: {
+          type: 'string',
+          format: 'binary',
+          description: 'Sertifika PDF (max 10MB)',
+        },
+        cv: {
+          type: 'string',
+          format: 'binary',
+          description: 'CV PDF (max 10MB)',
+        },
       },
     },
   })
-  @ApiResponse({ status: 201, description: 'Uzman kaydı oluşturuldu, admin onayı bekleniyor' })
+  @ApiResponse({
+    status: 201,
+    description: 'Uzman kaydı oluşturuldu, admin onayı bekleniyor',
+  })
   @ApiResponse({ status: 400, description: 'PDF dosyası eksik' })
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -87,7 +123,8 @@ export class AuthController {
   )
   registerUzman(
     @Body() dto: RegisterUzmanDto,
-    @UploadedFiles() files: { certificate?: Express.Multer.File[]; cv?: Express.Multer.File[] },
+    @UploadedFiles()
+    files: { certificate?: Express.Multer.File[]; cv?: Express.Multer.File[] },
   ) {
     return this.authService.registerUzman(dto, files);
   }
@@ -95,8 +132,15 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
-  @ApiOperation({ summary: 'Giriş yap', description: 'Dakikada max 5 istek. Başarılı girişte accessToken (1sa) ve refreshToken (7gün) döner.' })
-  @ApiResponse({ status: 200, schema: { example: { accessToken: 'eyJ...', refreshToken: 'eyJ...' } } })
+  @ApiOperation({
+    summary: 'Giriş yap',
+    description:
+      'Dakikada max 5 istek. Başarılı girişte accessToken (1sa) ve refreshToken (7gün) döner.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: { accessToken: 'eyJ...', refreshToken: 'eyJ...' } },
+  })
   @ApiResponse({ status: 401, description: 'Geçersiz kimlik bilgileri' })
   @ApiResponse({ status: 429, description: 'Çok fazla istek (rate limit)' })
   login(@Body() dto: LoginDto) {
@@ -106,16 +150,29 @@ export class AuthController {
   @Public()
   @UseGuards(AuthGuard('jwt-refresh'))
   @Post('refresh')
-  @ApiOperation({ summary: 'Token yenile', description: 'Süresi dolmamış refreshToken ile yeni accessToken alır. Eski refreshToken geçersiz olur (rotasyon).' })
-  @ApiResponse({ status: 200, schema: { example: { accessToken: 'eyJ...', refreshToken: 'eyJ...' } } })
+  @ApiOperation({
+    summary: 'Token yenile',
+    description:
+      'Süresi dolmamış refreshToken ile yeni accessToken alır. Eski refreshToken geçersiz olur (rotasyon).',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: { accessToken: 'eyJ...', refreshToken: 'eyJ...' } },
+  })
   refresh(@CurrentUser() user: { id: string; refreshToken: string }) {
     return this.authService.refresh(user.id, user.refreshToken);
   }
 
   @Post('logout')
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Çıkış yap', description: 'RefreshToken\'ı veritabanından siler.' })
-  @ApiResponse({ status: 200, schema: { example: { message: 'Çıkış yapıldı' } } })
+  @ApiOperation({
+    summary: 'Çıkış yap',
+    description: "RefreshToken'ı veritabanından siler.",
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: { message: 'Çıkış yapıldı' } },
+  })
   logout(@Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto.refreshToken);
   }
@@ -136,17 +193,37 @@ export class AuthController {
 
   @Public()
   @Post('forgot-password')
-  @ApiOperation({ summary: 'Şifremi unuttum', description: 'Kayıtlı e-postaya 30 dakika geçerli sıfırlama linki gönderir.' })
-  @ApiResponse({ status: 200, schema: { example: { message: 'Eğer e-posta kayıtlıysa sıfırlama bağlantısı gönderildi' } } })
+  @ApiOperation({
+    summary: 'Şifremi unuttum',
+    description:
+      'Kayıtlı e-postaya 30 dakika geçerli sıfırlama linki gönderir.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        message: 'Eğer e-posta kayıtlıysa sıfırlama bağlantısı gönderildi',
+      },
+    },
+  })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
   @Public()
   @Post('reset-password')
-  @ApiOperation({ summary: 'Şifre sıfırla', description: 'E-postadan gelen token ile şifreyi günceller.' })
-  @ApiResponse({ status: 200, schema: { example: { message: 'Şifre başarıyla güncellendi' } } })
-  @ApiResponse({ status: 400, description: 'Geçersiz veya süresi dolmuş token' })
+  @ApiOperation({
+    summary: 'Şifre sıfırla',
+    description: 'E-postadan gelen token ile şifreyi günceller.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: { message: 'Şifre başarıyla güncellendi' } },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Geçersiz veya süresi dolmuş token',
+  })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }

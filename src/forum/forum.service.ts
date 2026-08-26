@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { AssignQuestionDto } from './dto/assign-question.dto';
@@ -18,7 +23,10 @@ export class ForumService {
   async findAllPublic(page = 1, limit = 10) {
     const skip = (page - 1) * limit;
     // Sadece en az 1 onaylı cevabı olan sorular public listede görünür
-    const where = { status: 'CEVAPLANDI' as const, answers: { some: { isApproved: true } } };
+    const where = {
+      status: 'CEVAPLANDI' as const,
+      answers: { some: { isApproved: true } },
+    };
     const [data, total] = await this.prisma.$transaction([
       this.prisma.forumQuestion.findMany({
         where,
@@ -26,7 +34,20 @@ export class ForumService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          answers: { where: { isApproved: true }, select: { content: true, createdAt: true, expertProfile: { select: { title: true, avatarUrl: true, user: { select: { firstName: true, lastName: true } } } } } },
+          answers: {
+            where: { isApproved: true },
+            select: {
+              content: true,
+              createdAt: true,
+              expertProfile: {
+                select: {
+                  title: true,
+                  avatarUrl: true,
+                  user: { select: { firstName: true, lastName: true } },
+                },
+              },
+            },
+          },
         },
       }),
       this.prisma.forumQuestion.count({ where }),
@@ -38,7 +59,18 @@ export class ForumService {
     const q = await this.prisma.forumQuestion.findFirst({
       where: { id, status: 'CEVAPLANDI' },
       include: {
-        answers: { where: { isApproved: true }, include: { expertProfile: { select: { title: true, avatarUrl: true, user: { select: { firstName: true, lastName: true } } } } } },
+        answers: {
+          where: { isApproved: true },
+          include: {
+            expertProfile: {
+              select: {
+                title: true,
+                avatarUrl: true,
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
+        },
       },
     });
     if (!q) throw new NotFoundException('Soru bulunamadı');
@@ -66,17 +98,24 @@ export class ForumService {
   }
 
   async getAssignedQuestions(userId: string) {
-    const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.expertProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
     return this.prisma.forumQuestion.findMany({
-      where: { expertProfileId: profile.id, status: { in: ['ATANDI', 'CEVAPLANDI'] } },
+      where: {
+        expertProfileId: profile.id,
+        status: { in: ['ATANDI', 'CEVAPLANDI'] },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async getAssignedQuestionById(userId: string, questionId: string) {
-    const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.expertProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) throw new ForbiddenException('Uzman profili bulunamadı');
 
     const q = await this.prisma.forumQuestion.findFirst({
@@ -84,7 +123,11 @@ export class ForumService {
       include: {
         answers: {
           include: {
-            expertProfile: { include: { user: { select: { firstName: true, lastName: true } } } },
+            expertProfile: {
+              include: {
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -95,7 +138,9 @@ export class ForumService {
   }
 
   async createAnswer(userId: string, questionId: string, dto: CreateAnswerDto) {
-    const profile = await this.prisma.expertProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.expertProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) throw new ForbiddenException('Uzman profili bulunamadı');
 
     const q = await this.prisma.forumQuestion.findFirst({
@@ -119,7 +164,13 @@ export class ForumService {
     return this.prisma.forumQuestion.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, title: true, content: true, status: true, createdAt: true },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        status: true,
+        createdAt: true,
+      },
     });
   }
 
@@ -129,7 +180,11 @@ export class ForumService {
       include: {
         answers: {
           include: {
-            expertProfile: { include: { user: { select: { firstName: true, lastName: true } } } },
+            expertProfile: {
+              include: {
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -140,15 +195,21 @@ export class ForumService {
   }
 
   async deleteQuestion(userId: string, questionId: string) {
-    const q = await this.prisma.forumQuestion.findUnique({ where: { id: questionId } });
+    const q = await this.prisma.forumQuestion.findUnique({
+      where: { id: questionId },
+    });
     if (!q) throw new NotFoundException('Soru bulunamadı');
-    if (q.userId !== userId) throw new ForbiddenException('Bu soruyu silemezsiniz');
-    if (q.status !== 'ONAY_BEKLIYOR') throw new BadRequestException('Sadece onay bekleyen sorular silinebilir');
+    if (q.userId !== userId)
+      throw new ForbiddenException('Bu soruyu silemezsiniz');
+    if (q.status !== 'ONAY_BEKLIYOR')
+      throw new BadRequestException('Sadece onay bekleyen sorular silinebilir');
     await this.prisma.forumQuestion.delete({ where: { id: questionId } });
   }
 
   async adminDeleteQuestion(questionId: string) {
-    const q = await this.prisma.forumQuestion.findUnique({ where: { id: questionId } });
+    const q = await this.prisma.forumQuestion.findUnique({
+      where: { id: questionId },
+    });
     if (!q) throw new NotFoundException('Soru bulunamadı');
     await this.prisma.forumQuestion.delete({ where: { id: questionId } });
   }
@@ -156,6 +217,9 @@ export class ForumService {
   async approveAnswer(id: string) {
     const answer = await this.prisma.forumAnswer.findUnique({ where: { id } });
     if (!answer) throw new NotFoundException('Cevap bulunamadı');
-    return this.prisma.forumAnswer.update({ where: { id }, data: { isApproved: true } });
+    return this.prisma.forumAnswer.update({
+      where: { id },
+      data: { isApproved: true },
+    });
   }
 }

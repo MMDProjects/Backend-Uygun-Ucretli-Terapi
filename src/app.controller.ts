@@ -11,6 +11,17 @@ export class AppController {
     return this.appService.getHello();
   }
 
+  /** Deploy sonrasi ayaga kalkti mi kontrolu icin. Kimlik dogrulama gerektirmez. */
+  @Public()
+  @Get('health')
+  getHealth() {
+    return {
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Public()
   @Get('settings')
   getPublicSettings() {

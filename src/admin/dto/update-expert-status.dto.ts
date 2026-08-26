@@ -1,4 +1,4 @@
-import { IsEnum, IsString, IsOptional, ValidateIf } from 'class-validator';
+import { IsEnum, IsString, ValidateIf } from 'class-validator';
 import { ApprovalStatus } from '@prisma/client';
 
 export class UpdateExpertStatusDto {

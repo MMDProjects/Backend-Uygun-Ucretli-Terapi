@@ -2,7 +2,12 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { BlogsModule } from '../src/blogs/blogs.module';
 import { createAuthTestApp } from './helpers/create-test-app';
-import { buildPrismaMock, MOCK_UZMAN_ID, MOCK_EXPERT_PROFILE_ID, mockExpertProfile } from './helpers/prisma-mock';
+import {
+  buildPrismaMock,
+  MOCK_UZMAN_ID,
+  MOCK_EXPERT_PROFILE_ID,
+  mockExpertProfile,
+} from './helpers/prisma-mock';
 import { uzmanToken, danisanToken, bearerHeader } from './helpers/auth.helper';
 
 // Valid UUID v4 format: xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx
@@ -48,9 +53,7 @@ describe('Blogs (e2e)', () => {
       // findAllPublic uses prisma.$transaction([findMany, count])
       prismaMock.$transaction.mockResolvedValue([[mockPublicBlog], 1]);
 
-      const res = await request(app.getHttpServer())
-        .get('/blogs')
-        .expect(200);
+      const res = await request(app.getHttpServer()).get('/blogs').expect(200);
 
       expect(res.body).toHaveProperty('total', 1);
       expect(res.body).toHaveProperty('data');
@@ -60,9 +63,7 @@ describe('Blogs (e2e)', () => {
     it('should return empty data when no blogs exist', async () => {
       prismaMock.$transaction.mockResolvedValue([[], 0]);
 
-      const res = await request(app.getHttpServer())
-        .get('/blogs')
-        .expect(200);
+      const res = await request(app.getHttpServer()).get('/blogs').expect(200);
 
       expect(res.body.total).toBe(0);
       expect(res.body.data).toEqual([]);
@@ -71,9 +72,7 @@ describe('Blogs (e2e)', () => {
     it('should be accessible without auth token', async () => {
       prismaMock.$transaction.mockResolvedValue([[], 0]);
 
-      await request(app.getHttpServer())
-        .get('/blogs')
-        .expect(200);
+      await request(app.getHttpServer()).get('/blogs').expect(200);
     });
   });
 
@@ -93,9 +92,7 @@ describe('Blogs (e2e)', () => {
     it('should return 404 when blog slug does not exist', async () => {
       prismaMock.blog.findFirst.mockResolvedValue(null);
 
-      await request(app.getHttpServer())
-        .get('/blogs/olmayan-blog')
-        .expect(404);
+      await request(app.getHttpServer()).get('/blogs/olmayan-blog').expect(404);
     });
   });
 
@@ -104,7 +101,9 @@ describe('Blogs (e2e)', () => {
   describe('GET /blogs/me/list', () => {
     it('should return my blogs for authenticated UZMAN', async () => {
       // getMyBlogs calls expertProfile.findUnique first, then blog.findMany
-      prismaMock.expertProfile.findUnique.mockResolvedValue(mockExpertProfile());
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
       prismaMock.blog.findMany.mockResolvedValue([
         { ...mockPublicBlog, status: 'TASLAK' },
       ]);
@@ -118,9 +117,7 @@ describe('Blogs (e2e)', () => {
     });
 
     it('should return 401 without token', async () => {
-      await request(app.getHttpServer())
-        .get('/blogs/me/list')
-        .expect(401);
+      await request(app.getHttpServer()).get('/blogs/me/list').expect(401);
     });
 
     it('should return 403 when DANISAN tries to access UZMAN endpoint', async () => {
@@ -141,7 +138,9 @@ describe('Blogs (e2e)', () => {
     };
 
     it('should create a draft blog for authenticated UZMAN', async () => {
-      prismaMock.expertProfile.findUnique.mockResolvedValue(mockExpertProfile());
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
       prismaMock.blog.create.mockResolvedValue({
         id: 'new-blog-id',
         ...validBlogPayload,
@@ -202,7 +201,10 @@ describe('Blogs (e2e)', () => {
     it('should update own blog and change status to ONAY_BEKLIYOR', async () => {
       prismaMock.blog.findUnique.mockResolvedValue({
         ...mockPublicBlog,
-        expertProfile: { ...mockPublicBlog.expertProfile, userId: MOCK_UZMAN_ID },
+        expertProfile: {
+          ...mockPublicBlog.expertProfile,
+          userId: MOCK_UZMAN_ID,
+        },
       });
       prismaMock.blog.update.mockResolvedValue({
         ...mockPublicBlog,
@@ -222,7 +224,10 @@ describe('Blogs (e2e)', () => {
     it('should return 403 when UZMAN tries to update another experts blog', async () => {
       prismaMock.blog.findUnique.mockResolvedValue({
         ...mockPublicBlog,
-        expertProfile: { ...mockPublicBlog.expertProfile, userId: 'baska-uzman-id' },
+        expertProfile: {
+          ...mockPublicBlog.expertProfile,
+          userId: 'baska-uzman-id',
+        },
       });
 
       await request(app.getHttpServer())
@@ -257,7 +262,10 @@ describe('Blogs (e2e)', () => {
     it('should delete own blog', async () => {
       prismaMock.blog.findUnique.mockResolvedValue({
         ...mockPublicBlog,
-        expertProfile: { ...mockPublicBlog.expertProfile, userId: MOCK_UZMAN_ID },
+        expertProfile: {
+          ...mockPublicBlog.expertProfile,
+          userId: MOCK_UZMAN_ID,
+        },
       });
       prismaMock.blog.delete.mockResolvedValue(mockPublicBlog);
 
@@ -281,7 +289,10 @@ describe('Blogs (e2e)', () => {
     it('should return 403 when trying to delete another experts blog', async () => {
       prismaMock.blog.findUnique.mockResolvedValue({
         ...mockPublicBlog,
-        expertProfile: { ...mockPublicBlog.expertProfile, userId: 'baska-uzman-id' },
+        expertProfile: {
+          ...mockPublicBlog.expertProfile,
+          userId: 'baska-uzman-id',
+        },
       });
 
       await request(app.getHttpServer())

@@ -1,4 +1,4 @@
-﻿import { INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { NewsletterModule } from '../src/newsletter/newsletter.module';
 import { createPublicTestApp } from './helpers/create-test-app';
@@ -76,7 +76,10 @@ describe('Newsletter (e2e)', () => {
 
     it('should be accessible without auth token (public endpoint)', async () => {
       prismaMock.newsletter.findUnique.mockResolvedValue(null);
-      prismaMock.newsletter.create.mockResolvedValue({ id: 'nl-2', email: 'test@test.com' });
+      prismaMock.newsletter.create.mockResolvedValue({
+        id: 'nl-2',
+        email: 'test@test.com',
+      });
 
       await request(app.getHttpServer())
         .post('/newsletter/subscribe')

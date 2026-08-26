@@ -3,11 +3,7 @@
  * process.env.JWT_ACCESS_SECRET = 'test-secret' ile eşleşmelidir.
  */
 import * as jwt from 'jsonwebtoken';
-import {
-  MOCK_DANISAN_ID,
-  MOCK_UZMAN_ID,
-  MOCK_ADMIN_ID,
-} from './prisma-mock';
+import { MOCK_DANISAN_ID, MOCK_UZMAN_ID, MOCK_ADMIN_ID } from './prisma-mock';
 
 export const TEST_JWT_SECRET = 'test-secret';
 
