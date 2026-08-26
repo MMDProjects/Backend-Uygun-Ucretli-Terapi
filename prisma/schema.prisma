@@ -114,15 +114,15 @@ model ExpertProfile {
   userId         String         @unique
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  title          String         @default("")
+  title          String
   avatarUrl      String         @default("")
   bio                   String         @default("")
   pendingBio            String?
   education             String         @default("") @db.Text
   pendingTitle          String?
   pendingEducation      String?        @db.Text
-  certificateUrl        String         @default("")
-  cvUrl                 String         @default("")
+  certificateUrl        String
+  cvUrl                 String
   pendingCertificateUrl String?
   pendingCvUrl          String?
   pendingTagIds         String?

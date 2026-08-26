@@ -961,6 +961,12 @@ export class AdminService {
         isActive: true,
         expertProfile: {
           create: {
+            // Admin uzman olustururken bu alanlar bilinmiyor; uzman kendi
+            // profilini doldurana kadar bos kalir. Onceden sema default'una
+            // birakilmisti, artik acikca gonderiliyor (bkz. migration notu).
+            title: '',
+            certificateUrl: '',
+            cvUrl: '',
             status: 'ONAY_BEKLIYOR',
             isPublished: false,
             createdByAdmin: true,
