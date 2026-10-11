@@ -500,4 +500,60 @@ describe('Admin (e2e)', () => {
       expect(prismaMock.tag.create).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ── GET /admin/availabilities ───────────────────────────────────────────
+
+  describe('GET /admin/availabilities', () => {
+    it('should return all experts availabilities for the week in one query', async () => {
+      prismaMock.availability.findMany.mockResolvedValue([
+        {
+          id: 'a1',
+          expertProfileId: MOCK_EXPERT_PROFILE_ID,
+          date: new Date('2026-10-06'),
+          startTime: '10:00',
+          endTime: '11:00',
+          isBlockedByAdmin: false,
+        },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/availabilities?weekStart=2026-10-06')
+        .set('Authorization', bearerHeader(adminToken()))
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      const calls = prismaMock.availability.findMany.mock.calls as [
+        {
+          where: {
+            expertProfileId?: string;
+            date: { gte: Date; lte: Date };
+          };
+        },
+      ][];
+      const { where } = calls[calls.length - 1][0];
+      expect(where.expertProfileId).toBeUndefined();
+      expect(where.date.gte).toEqual(new Date('2026-10-06'));
+      // Pazar günü dahil: hafta sonu 6 gün sonrası gün sonu
+      expect(where.date.lte.getTime()).toBeGreaterThan(
+        new Date('2026-10-12').getTime(),
+      );
+      expect(where.date.lte.getTime()).toBeLessThan(
+        new Date('2026-10-13T23:59:59.999Z').getTime(),
+      );
+    });
+
+    it('should return 400 when weekStart is malformed', async () => {
+      await request(app.getHttpServer())
+        .get('/admin/availabilities?weekStart=06-10-2026')
+        .set('Authorization', bearerHeader(adminToken()))
+        .expect(400);
+    });
+
+    it('should return 403 for UZMAN role', async () => {
+      await request(app.getHttpServer())
+        .get('/admin/availabilities')
+        .set('Authorization', bearerHeader(uzmanToken()))
+        .expect(403);
+    });
+  });
 });
