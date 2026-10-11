@@ -13,6 +13,11 @@ async function createApp(): Promise<NestExpressApplication> {
     logger: ['error', 'warn'],
   });
 
+  // API nginx arkasında; X-Forwarded-For'a güvenmezsek her istek 127.0.0.1'den
+  // görünür ve tüm kullanıcılar tek rate limit kotasını paylaşır.
+  // 1 = yalnızca önümüzdeki tek proxy'ye (nginx) güven.
+  app.set('trust proxy', 1);
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
