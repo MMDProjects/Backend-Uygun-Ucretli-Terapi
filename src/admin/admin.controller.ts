@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -220,6 +221,18 @@ export class AdminController {
   ) {
     const ws = weekStart ? new Date(weekStart) : getThisMonday();
     return this.adminService.getExpertAvailabilities(id, ws);
+  }
+
+  @Get('availabilities')
+  @ApiOperation({
+    summary: 'Tüm uzmanların haftalık müsaitlikleri (tek istek)',
+  })
+  getAllAvailabilities(@Query('weekStart') weekStart?: string) {
+    if (weekStart !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+      throw new BadRequestException('weekStart YYYY-MM-DD formatında olmalı');
+    }
+    const ws = weekStart ? new Date(weekStart) : getThisMonday();
+    return this.adminService.getAllAvailabilities(ws);
   }
 
   @Patch('availabilities/:id/block')
