@@ -30,6 +30,13 @@ export function getThisMonday(): Date {
   return monday;
 }
 
+function getWeekEnd(weekStart: Date): Date {
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+  return weekEnd;
+}
+
 const DEFAULT_ANNOUNCEMENT_ITEMS = [
   'Admin onaylı, sertifikalı uzman profilleri',
   'Ücretsiz ön görüşme imkânı — WhatsApp üzerinden hemen başla',
@@ -730,15 +737,20 @@ export class AdminService {
   }
 
   async getExpertAvailabilities(expertId: string, weekStart: Date) {
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 999);
-
     return this.prisma.availability.findMany({
       where: {
         expertProfileId: expertId,
-        date: { gte: weekStart, lte: weekEnd },
+        date: { gte: weekStart, lte: getWeekEnd(weekStart) },
       },
+      orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+    });
+  }
+
+  // Admin müsaitlik tablosu tüm uzmanları tek istekte çeker; uzman başına
+  // istek atmak rate limit'e takılıp bazı uzmanları boş gösteriyordu.
+  async getAllAvailabilities(weekStart: Date) {
+    return this.prisma.availability.findMany({
+      where: { date: { gte: weekStart, lte: getWeekEnd(weekStart) } },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
     });
   }
