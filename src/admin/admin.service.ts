@@ -110,10 +110,18 @@ export class AdminService {
     };
   }
 
-  async getExperts(page = 1, limit = 20) {
+  async getExperts(page = 1, limit = 20, onlyApproved = false) {
     const skip = (page - 1) * limit;
+    const where = onlyApproved
+      ? {
+          status: {
+            in: [ApprovalStatus.YAYINDA, ApprovalStatus.REVIZE_GONDERILDI],
+          },
+        }
+      : undefined;
     const [data, total] = await this.prisma.$transaction([
       this.prisma.expertProfile.findMany({
+        where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -131,7 +139,7 @@ export class AdminService {
           tags: true,
         },
       }),
-      this.prisma.expertProfile.count(),
+      this.prisma.expertProfile.count({ where }),
     ]);
     return { data, total, page, limit };
   }

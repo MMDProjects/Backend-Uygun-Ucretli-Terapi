@@ -149,8 +149,12 @@ export class AdminController {
   }
 
   @Get('experts')
-  getExperts(@Query('page') page = '1', @Query('limit') limit = '20') {
-    return this.adminService.getExperts(+page, +limit);
+  getExperts(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('onlyApproved') onlyApproved?: string,
+  ) {
+    return this.adminService.getExperts(+page, +limit, onlyApproved === 'true');
   }
 
   @Get('experts/:id')
