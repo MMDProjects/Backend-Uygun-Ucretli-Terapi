@@ -156,6 +156,34 @@ export class MailService {
     );
   }
 
+  // ─── Admin: Yeni Arama Talebi (asistan) ───────────────────────────────────
+
+  async sendNewLeadAdmin(data: {
+    fullName: string;
+    preferredCallTime: string;
+    serviceType: string;
+    channel: string;
+  }) {
+    const adminMail = this.adminEmail;
+    if (!adminMail) return;
+    const body = `
+      <p style="color:#1a1a1a;line-height:1.7">Asistan üzerinden yeni bir arama talebi alındı.</p>
+      <table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:14px">
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:120px">Ad Soyad</td><td style="padding:8px">${data.fullName}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:600">Arama Saati</td><td style="padding:8px">${data.preferredCallTime}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:600">Hizmet</td><td style="padding:8px">${data.serviceType}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:600">Kanal</td><td style="padding:8px">${data.channel}</td></tr>
+      </table>
+      ${this.ctaButton('Admin Paneline Git', `${this.frontendUrl}/admin`)}
+    `;
+    await this.send(
+      adminMail,
+      'Admin',
+      'Yeni Arama Talebi',
+      this.buildEmailHtml('Yeni Arama Talebi', body),
+    );
+  }
+
   // ─── Danışan Hoş Geldiniz ─────────────────────────────────────────────────
 
   async sendWelcomeDanisan(email: string, name: string) {

@@ -11,6 +11,7 @@ async function createApp(): Promise<NestExpressApplication> {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn'],
+    rawBody: true,
   });
 
   // API nginx arkasında; X-Forwarded-For'a güvenmezsek her istek 127.0.0.1'den
@@ -76,6 +77,7 @@ async function createApp(): Promise<NestExpressApplication> {
       .addTag('newsletter', 'Bülten aboneliği')
       .addTag('notifications', 'Bildirimler (SSE)')
       .addTag('admin', 'Admin panel yönetimi')
+      .addTag('webhooks', 'Meta (WhatsApp/Instagram) webhook entegrasyonu')
       .build();
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);

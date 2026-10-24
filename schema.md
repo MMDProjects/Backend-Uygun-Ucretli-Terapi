@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -16,6 +17,7 @@ enum Role {
 enum ApprovalStatus {
   TASLAK
   ONAY_BEKLIYOR
+  PROFIL_GUNCELLENDI
   YAYINDA
   REDDEDILDI
   REVIZE_GONDERILDI
@@ -27,18 +29,32 @@ enum ContactSubject {
   ONERI
   SIKAYET
   DIGER
+  KURUMSAL_DANISMANLIK
+  CALISAN_DESTEK_PROGRAMI
+  EGITIM_VE_ATOLYE
+  TEKLIF_TALEBI
+}
+
+enum ContactFormStatus {
+  YENI
+  ISLEMDE
+  COZULDU
 }
 
 enum SssPage {
   GENEL
   TESTLER
   PAKETLER
+  RANDEVU
+  ODEME
+  UZMAN
+  GIZLILIK
 }
 
 enum NotificationType {
   INFO
   WARNING
-  DANGER_PANIC // Uzman panelinde kıpkırmızı yanıp sönecek panik uyarısı
+  DANGER_PANIC
 }
 
 enum QuestionStatus {
@@ -51,91 +67,122 @@ enum RequestStatus {
   BEKLEMEDE
   UZMANA_YONLENDIRILDI
   TAMAMLANDI
+  REDDEDILDI
 }
 
 model User {
-  id            String    @id @default(uuid())
-  firstName     String
-  lastName      String
-  email         String    @unique
-  phone         String
-  passwordHash  String
-  role          Role      @default(DANISAN)
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                   String    @id @default(uuid())
+  firstName            String
+  lastName             String
+  email                String    @unique
+  phone                String?
+  passwordHash         String
+  role                 Role      @default(DANISAN)
+  isActive             Boolean   @default(true)
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  // İlişkiler
   expertProfile  ExpertProfile?
   favorites      Favorite[]
   testResults    TestResult[]
   comments       Comment[]
   tokens         RefreshToken[]
-  forumQuestions ForumQuestion[] // Danışanın sorduğu sorular
-  expertRequests ExpertRequest[] // Danışanın profil üzerinden gönderdiği talepler
+  forumQuestions ForumQuestion[]
+  expertRequests ExpertRequest[]
+  notifications  Notification[]
+  contact        Contact?
+  agentMessages  Message[]
 
   @@map("users")
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
+  id        String    @id @default(uuid())
+  token     String    @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
 
+  @@index([userId])
   @@map("refresh_tokens")
 }
 
 model ExpertProfile {
-  id             String         @id @default(uuid())
-  userId         String         @unique
-  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  title          String         // Örn: Uzman Klinik Psikolog
-  avatarUrl      String
-  bio            String         // Backend DTO validation: 80-150 kelime kısıtlaması
-  education      String         @db.Text // Yeni Eklenen: Profilde doğrudan okunacak yazılı eğitim/özgeçmiş bilgisi
-  certificateUrl String         // Zorunlu Sertifika PDF
-  cvUrl          String         // Zorunlu CV PDF
-  priorityScore  Int            @default(1) // 1-100 arası öncelik skoru
-  rating         Float          @default(5.0) // Onaylı yorumlardan beslenen ortalama yıldız
-  status         ApprovalStatus @default(TASLAK)
-  adminNote      String?        // Red durumunda zorunlu girilen açıklama
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  title                    String
+  avatarUrl                String         @default("")
+  bio                      String         @default("")
+  pendingBio               String?
+  education                String         @default("") @db.Text
+  pendingTitle             String?
+  pendingEducation         String?        @db.Text
+  certificateUrl           String
+  cvUrl                    String
+  pendingCertificateUrl    String?
+  pendingCvUrl             String?
+  pendingTagIds            String?
+  pendingAvatarUrl         String?
+  pendingFirstName         String?
+  pendingLastName          String?
+  city                     String?
+  district                 String?
+  age                      Int?
+  gender                   String?
+  website                  String?
+  instagram                String?
+  experienceDuration       String?
+  registrationCertificates String?        @db.Text
+  priorityScore            Int            @default(1)
+  rating                   Float          @default(5.0)
+  standardPrice            Decimal?       @db.Decimal(10, 2)
+  discountedPrice          Decimal?       @db.Decimal(10, 2)
+  status                   ApprovalStatus @default(TASLAK)
+  isPublished              Boolean        @default(false)
+  adminNote                String?
+  createdByAdmin           Boolean        @default(false)
 
-  // İlişkiler
-  tags           Tag[]          // Yeni Limit: Min 2, Max 12-15 adet etiket
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tags           Tag[]
   blogs          Blog[]
   availabilities Availability[]
   favorites      Favorite[]
-  forumQuestions ForumQuestion[] // Uzmana atanan forum soruları
-  expertRequests ExpertRequest[] // Bu uzmana yönlendirilen talepler
+  forumQuestions ForumQuestion[]
+  forumAnswers   ForumAnswer[]
+  expertRequests ExpertRequest[]
+  comments       Comment[]
+  appointments   Appointment[]
 
   @@map("expert_profiles")
 }
 
 model Tag {
-  id        String          @id @default(uuid())
-  name      String          @unique
-  isActive  Boolean         @default(true)
-  profiles  ExpertProfile[]
+  id       String          @id @default(uuid())
+  name     String          @unique
+  isActive Boolean         @default(true)
+  profiles ExpertProfile[]
 
   @@map("tags")
 }
 
 model Availability {
-  id              String        @id @default(uuid())
-  expertProfileId String
-  expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
-  dayOfWeek       Int           // 0-6 (Pazar-Cumartesi)
-  startTime       String        // "09:00"
-  endTime         String        // "10:00"
-  isBlockedByAdmin Boolean      @default(false)
+  id               String        @id @default(uuid())
+  expertProfileId  String
+  expertProfile    ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  date             DateTime
+  startTime        String
+  endTime          String
+  isBlockedByAdmin Boolean       @default(false)
 
+  @@unique([expertProfileId, date, startTime])
   @@map("availabilities")
 }
 
@@ -151,21 +198,20 @@ model Favorite {
   @@map("favorites")
 }
 
-// YENİ MODÜL: "Uzman Cevaplıyor" (Forum) Tabloları
 model ForumQuestion {
   id              String         @id @default(uuid())
-  userId          String         // Soruyu soran danışan
+  userId          String
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expertProfileId String?        // Adminin soruyu atadığı uzman (Opsiyonel - İlk başta null)
+  expertProfileId String?
   expertProfile   ExpertProfile? @relation(fields: [expertProfileId], references: [id], onDelete: SetNull)
-  
-  title           String
-  content         String         @db.Text
-  status          QuestionStatus @default(ONAY_BEKLIYOR)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  
-  answers         ForumAnswer[]
+
+  title     String
+  content   String         @db.Text
+  status    QuestionStatus @default(ONAY_BEKLIYOR)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  answers ForumAnswer[]
 
   @@map("forum_questions")
 }
@@ -174,27 +220,26 @@ model ForumAnswer {
   id              String        @id @default(uuid())
   questionId      String
   question        ForumQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  expertProfileId String        // Cevaplayan uzman
+  expertProfileId String
   expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
-  
-  content         String        @db.Text
-  isApproved      Boolean       @default(false) // Admin onay mekanizması forum cevapları için de geçerli
-  createdAt       DateTime      @default(now())
+
+  content    String   @db.Text
+  isApproved Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
   @@map("forum_answers")
 }
 
-// REVIZE EDİLEN MODÜL: Danışan Talepleri (Admine düşen, uzman statüsü gösteren yapı)
 model ExpertRequest {
   id              String        @id @default(uuid())
   userId          String
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expertProfileId String        // Danışanın talep ettiği uzman
+  expertProfileId String
   expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
-  
-  message         String        @db.Text
-  status          RequestStatus @default(BEKLEMEDE) // Beklemede, Uzmana Yönlendirildi, Tamamlandı
-  createdAt       DateTime      @default(now())
+
+  message   String        @db.Text
+  status    RequestStatus @default(BEKLEMEDE)
+  createdAt DateTime      @default(now())
 
   @@map("expert_requests")
 }
@@ -205,77 +250,100 @@ model Test {
   slug        String       @unique
   description String
   isActive    Boolean      @default(true)
+  definition  Json?
   results     TestResult[]
 
   @@map("tests")
 }
 
 model TestResult {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  testId    String
-  test      Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
-  scoreSummary String 
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testId       String
+  test         Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  scoreSummary String
+  createdAt    DateTime @default(now())
 
   @@map("test_results")
 }
 
 model Blog {
-  id              String         @id @default(uuid())
-  expertProfileId String
-  expertProfile   ExpertProfile  @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
-  title           String
-  slug            String         @unique
-  content         String         @db.Text
-  status          ApprovalStatus @default(TASLAK)
-  adminNote       String?        
+  id                   String         @id @default(uuid())
+  expertProfileId      String?
+  expertProfile        ExpertProfile? @relation(fields: [expertProfileId], references: [id], onDelete: SetNull)
+  title                String
+  slug                 String         @unique
+  content              String         @db.Text
+  coverImageUrl        String?
+  pendingTitle         String?
+  pendingContent       String?        @db.Text
+  pendingCoverImageUrl String?
+  authorName           String?
+  status               ApprovalStatus @default(TASLAK)
+  adminNote            String?
 
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("blogs")
 }
 
 model Comment {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   expertProfileId String
   expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
   content         String
-  rating          Int      
-  isApproved      Boolean  @default(false)
-  createdAt       DateTime @default(now())
+  rating          Int
+  isApproved      Boolean       @default(false)
+  createdAt       DateTime      @default(now())
 
   @@map("comments")
 }
 
 model Package {
-  id          String   @id @default(uuid())
-  name        String   
-  sessionCount Int     
-  price       Decimal  @db.Decimal(10, 2) 
-  description String
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  sessionCount Int
+  sortOrder    Int      @default(0)
+  price        Decimal  @db.Decimal(10, 2)
+  description  String
+  updatedAt    DateTime @updatedAt
 
   @@map("packages")
 }
 
 model ContactForm {
-  id          String         @id @default(uuid())
-  fullName    String
-  email       String
-  phone       String
-  subject     ContactSubject
-  message     String
-  isCorporate Boolean        @default(false) 
-  companyName String?        
-  employeeCount String?      
-  createdAt   DateTime       @default(now())
+  id             String            @id @default(uuid())
+  fullName       String
+  email          String
+  phone          String
+  subject        ContactSubject
+  message        String
+  isCorporate    Boolean           @default(false)
+  companyName    String?
+  employeeCount  String?
+  kvkkApproved   Boolean           @default(false)
+  kvkkVersionId  String?
+  kvkkVersionRef KvkkVersion?      @relation(fields: [kvkkVersionId], references: [id], onDelete: SetNull)
+  status         ContactFormStatus @default(YENI)
+  createdAt      DateTime          @default(now())
 
   @@map("contact_forms")
+}
+
+model KvkkVersion {
+  id          String   @id @default(uuid())
+  version     String
+  sections    Json
+  publishedAt DateTime @default(now())
+  isActive    Boolean  @default(false)
+
+  contactForms ContactForm[]
+
+  @@map("kvkk_versions")
 }
 
 model Newsletter {
@@ -286,23 +354,22 @@ model Newsletter {
   @@map("newsletters")
 }
 
-// REVIZE EDİLEN MODEL: Sayfa bazlı SSS kategorisi
 model Sss {
-  id        String   @id @default(uuid())
-  question  String
-  answer    String   @db.Text
-  page      SssPage  @default(GENEL) // Hangi sayfada gösterileceği (GENEL, TESTLER, PAKETLER)
-  isActive  Boolean  @default(true)
-  order     Int      @default(0)
+  id       String  @id @default(uuid())
+  question String
+  answer   String  @db.Text
+  page     SssPage @default(GENEL)
+  isActive Boolean @default(true)
+  order    Int     @default(0)
 
   @@map("sss")
 }
 
-// REVIZE EDİLEN MODEL: Uzman Uyarıları için Panik Tipi ve Sistem Genel Ayarları
 model Notification {
   id        String           @id @default(uuid())
-  userId    String           // Bildirimin gideceği uzman veya admin
-  type      NotificationType @default(INFO) // INFO, WARNING, DANGER_PANIC
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType @default(INFO)
   message   String
   isRead    Boolean          @default(false)
   createdAt DateTime         @default(now())
@@ -311,18 +378,212 @@ model Notification {
 }
 
 model SystemSetting {
-  id              String @id @default(uuid())
-  whatsappNumber  String 
-  instagramUrl    String // Sadece Instagram ve WhatsApp kalacağı için diğer sosyal medyaları şemadan eledim
-  
-  // Yeni Eklenen Alanlar: Kartların üzerinde duracak merkezi standart ve indirimli fiyat politikası
-  standardPrice   Decimal @db.Decimal(10, 2) @default(1500.00) // Örn: 1500
-  discountedPrice Decimal @db.Decimal(10, 2) @default(1000.00) // Örn: 1000
-  
-  logoUrl         String
-  videoUrl        String? // Biz Kimiz sekmesi için yüklenecek stüdyo video linki (YouTube/Vimeo/S3)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  whatsappNumber     String
+  instagramUrl       String
+  standardPrice      Decimal  @default(1500.00) @db.Decimal(10, 2)
+  discountedPrice    Decimal  @default(1000.00) @db.Decimal(10, 2)
+  logoUrl            String
+  videoUrl           String?
+  announcementItems  Json     @default("[]")
+  wheelSegments      Json     @default("[]")
+  wheelWinnerIndices Json     @default("[]")
+  loginPopupSettings Json     @default("{}")
+  staticPageContent  Json?
+  kvkkContent        Json?
+  kvkkVersion        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+enum Channel {
+  WHATSAPP
+  INSTAGRAM
+  WEB
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING_AGENT
+  CLOSED
+}
+
+enum SenderType {
+  CLIENT
+  BOT
+  AGENT
+}
+
+model Contact {
+  id           String   @id @default(uuid())
+  phone        String?  @unique
+  instagramId  String?  @unique
+  fullName     String?
+  age          Int?
+  notes        String?  @db.Text
+  channel      Channel
+  createdAt    DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+
+  conversations Conversation[]
+  userId        String?        @unique
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointments  Appointment[]
+  leads         Lead[]
+
+  @@map("contacts")
+}
+
+model Conversation {
+  id            String             @id @default(uuid())
+  contactId     String
+  contact       Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel       Channel
+  isBotActive   Boolean            @default(true)
+  status        ConversationStatus @default(OPEN)
+  flaggedCrisis Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  lastMessageAt DateTime           @default(now())
+
+  messages            Message[]
+  leads               Lead[]
+  unansweredQuestions UnansweredQuestion[]
+
+  @@index([contactId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderType     SenderType
+  content        String       @db.Text
+  metaMessageId  String?      @unique
+  agentUserId    String?
+  agentUser      User?        @relation(fields: [agentUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+enum KnowledgeCategory {
+  FIYAT
+  HIZMET
+  PROSEDUR
+  SSS
+}
+
+enum KnowledgeSource {
+  MANUAL
+  SSS
+  CONVERSATION
+}
+
+model KnowledgeBase {
+  id          String            @id @default(uuid())
+  category    KnowledgeCategory
+  title       String
+  content     String            @db.Text
+  embedding   Float[]
+  isActive    Boolean           @default(true)
+  source      KnowledgeSource   @default(MANUAL)
+  sourceRefId String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([category])
+  @@index([source, sourceRefId])
+  @@map("knowledge_base")
+}
+
+enum LeadStatus {
+  YENI
+  ARANDI
+  ULASILAMADI
+  RANDEVU_OLUSTURULDU
+  VAZGECTI
+}
+
+model Lead {
+  id                String        @id @default(uuid())
+  contactId         String
+  contact           Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId    String?
+  conversation      Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  channel           Channel
+  serviceType       ServiceType
+  fullName          String
+  age               Int?
+  phone             String?
+  preferredCallTime String
+  summary           String        @db.Text
+  status            LeadStatus    @default(YENI)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([status, createdAt])
+  @@map("leads")
+}
+
+enum UnansweredStatus {
+  OPEN
+  RESOLVED
+}
+
+model UnansweredQuestion {
+  id             String           @id @default(uuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  question       String           @db.Text
+  topScore       Float?
+  status         UnansweredStatus @default(OPEN)
+  createdAt      DateTime         @default(now())
+
+  @@index([status, createdAt])
+  @@map("unanswered_questions")
+}
+
+enum ServiceType {
+  BIREYSEL
+  CIFT
+  AILE
+  COCUK_ERGEN
+  EMDR
+  ON_GORUSME
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  FREE
+}
+
+model Appointment {
+  id              String            @id @default(uuid())
+  contactId       String
+  contact         Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  therapistId     String
+  therapist       ExpertProfile     @relation(fields: [therapistId], references: [id], onDelete: Restrict)
+  serviceType     ServiceType
+  scheduledAt     DateTime
+  durationMinutes Int               @default(45)
+  status          AppointmentStatus @default(SCHEDULED)
+  paymentStatus   PaymentStatus     @default(PENDING)
+  roomToken       String            @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([therapistId, scheduledAt])
+  @@index([contactId])
+  @@map("appointments")
 }

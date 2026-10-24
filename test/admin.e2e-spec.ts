@@ -503,6 +503,42 @@ describe('Admin (e2e)', () => {
 
   // ── GET /admin/availabilities ───────────────────────────────────────────
 
+  describe('DELETE /admin/experts/:id', () => {
+    it('should return 409 when the expert has appointments', async () => {
+      prismaMock.expertProfile.findUnique.mockResolvedValue({
+        userId: MOCK_UZMAN_ID,
+      });
+      prismaMock.appointment.count.mockResolvedValue(2);
+
+      await request(app.getHttpServer())
+        .delete(`/admin/experts/${MOCK_EXPERT_PROFILE_ID}`)
+        .set('Authorization', bearerHeader(adminToken()))
+        .expect(409);
+
+      expect(prismaMock.appointment.count).toHaveBeenCalledWith({
+        where: { therapistId: MOCK_EXPERT_PROFILE_ID },
+      });
+      expect(prismaMock.user.delete).not.toHaveBeenCalled();
+    });
+
+    it('should delete the expert when it has no appointments', async () => {
+      prismaMock.expertProfile.findUnique.mockResolvedValue({
+        userId: MOCK_UZMAN_ID,
+      });
+      prismaMock.appointment.count.mockResolvedValue(0);
+      prismaMock.user.delete.mockResolvedValue({ id: MOCK_UZMAN_ID });
+
+      await request(app.getHttpServer())
+        .delete(`/admin/experts/${MOCK_EXPERT_PROFILE_ID}`)
+        .set('Authorization', bearerHeader(adminToken()))
+        .expect(200);
+
+      expect(prismaMock.user.delete).toHaveBeenCalledWith({
+        where: { id: MOCK_UZMAN_ID },
+      });
+    });
+  });
+
   describe('GET /admin/availabilities', () => {
     it('should return all experts availabilities for the week in one query', async () => {
       prismaMock.availability.findMany.mockResolvedValue([
