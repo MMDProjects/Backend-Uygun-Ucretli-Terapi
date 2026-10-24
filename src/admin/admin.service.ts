@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -12,6 +13,7 @@ import { MailService } from '../mail/mail.service';
 import { CommentsService } from '../comments/comments.service';
 import { ExpertRequestsService } from '../requests/expert-requests.service';
 import { ForumService } from '../forum/forum.service';
+import { KnowledgeService } from '../assistant/knowledge.service';
 import { UpdateExpertStatusDto } from './dto/update-expert-status.dto';
 import { CreateExpertByAdminDto } from './dto/create-expert-by-admin.dto';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
@@ -69,7 +71,25 @@ export class AdminService {
     private commentsService: CommentsService,
     private expertRequestsService: ExpertRequestsService,
     private forumService: ForumService,
+    private knowledge: KnowledgeService,
   ) {}
+
+  private readonly logger = new Logger(AdminService.name);
+
+  private syncSssInBackground(sssId: string): void {
+    void this.knowledge
+      .syncSss(sssId)
+      .catch((err) =>
+        this.logger.error(
+          `SSS bilgi bankası senkronu başarısız (${sssId})`,
+          err,
+        ),
+      );
+  }
+
+  reindexAllSss() {
+    return this.knowledge.reindexAllSss();
+  }
 
   async getDashboard() {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -312,6 +332,14 @@ export class AdminService {
       select: { userId: true },
     });
     if (!expert) throw new NotFoundException('Uzman bulunamadı');
+    const appointmentCount = await this.prisma.appointment.count({
+      where: { therapistId: id },
+    });
+    if (appointmentCount > 0) {
+      throw new ConflictException(
+        'Bu uzmanın randevuları var; önce randevuları iptal edin veya başka uzmana aktarın.',
+      );
+    }
     await this.prisma.user.delete({ where: { id: expert.userId } });
     return { message: 'Uzman silindi' };
   }
@@ -606,15 +634,20 @@ export class AdminService {
   }
 
   async createSss(dto: UpsertSssDto) {
-    return this.prisma.sss.create({ data: dto });
+    const sss = await this.prisma.sss.create({ data: dto });
+    this.syncSssInBackground(sss.id);
+    return sss;
   }
 
   async updateSss(id: string, dto: UpsertSssDto) {
-    return this.prisma.sss.update({ where: { id }, data: dto });
+    const sss = await this.prisma.sss.update({ where: { id }, data: dto });
+    this.syncSssInBackground(sss.id);
+    return sss;
   }
 
   async deleteSss(id: string) {
     await this.prisma.sss.delete({ where: { id } });
+    this.syncSssInBackground(id);
     return { message: 'SSS silindi' };
   }
 

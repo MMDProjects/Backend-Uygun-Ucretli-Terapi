@@ -7,6 +7,7 @@ import { MailModule } from '../mail/mail.module';
 import { CommentsModule } from '../comments/comments.module';
 import { ExpertRequestsModule } from '../requests/expert-requests.module';
 import { ForumModule } from '../forum/forum.module';
+import { AssistantModule } from '../assistant/assistant.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ForumModule } from '../forum/forum.module';
     CommentsModule,
     ExpertRequestsModule,
     ForumModule,
+    AssistantModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AppService],

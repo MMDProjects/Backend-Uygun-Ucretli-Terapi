@@ -92,6 +92,8 @@ model User {
   forumQuestions ForumQuestion[]
   expertRequests ExpertRequest[]
   notifications  Notification[]
+  contact        Contact?
+  agentMessages  Message[]
 
   @@map("users")
 }
@@ -110,44 +112,44 @@ model RefreshToken {
 }
 
 model ExpertProfile {
-  id             String         @id @default(uuid())
-  userId         String         @unique
-  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  title          String
-  avatarUrl      String         @default("")
-  bio                   String         @default("")
-  pendingBio            String?
-  education             String         @default("") @db.Text
-  pendingTitle          String?
-  pendingEducation      String?        @db.Text
-  certificateUrl        String
-  cvUrl                 String
-  pendingCertificateUrl String?
-  pendingCvUrl          String?
-  pendingTagIds         String?
-  pendingAvatarUrl      String?
-  pendingFirstName      String?
-  pendingLastName       String?
-  city                  String?
-  district              String?
-  age                   Int?
-  gender                String?
-  website               String?
-  instagram             String?
-  experienceDuration    String?
-  registrationCertificates String? @db.Text
-  priorityScore   Int            @default(1)
-  rating          Float          @default(5.0)
-  standardPrice   Decimal?       @db.Decimal(10, 2)
-  discountedPrice Decimal?       @db.Decimal(10, 2)
-  status          ApprovalStatus @default(TASLAK)
-  isPublished    Boolean        @default(false)
-  adminNote      String?
-  createdByAdmin Boolean        @default(false)
+  title                    String
+  avatarUrl                String         @default("")
+  bio                      String         @default("")
+  pendingBio               String?
+  education                String         @default("") @db.Text
+  pendingTitle             String?
+  pendingEducation         String?        @db.Text
+  certificateUrl           String
+  cvUrl                    String
+  pendingCertificateUrl    String?
+  pendingCvUrl             String?
+  pendingTagIds            String?
+  pendingAvatarUrl         String?
+  pendingFirstName         String?
+  pendingLastName          String?
+  city                     String?
+  district                 String?
+  age                      Int?
+  gender                   String?
+  website                  String?
+  instagram                String?
+  experienceDuration       String?
+  registrationCertificates String?        @db.Text
+  priorityScore            Int            @default(1)
+  rating                   Float          @default(5.0)
+  standardPrice            Decimal?       @db.Decimal(10, 2)
+  discountedPrice          Decimal?       @db.Decimal(10, 2)
+  status                   ApprovalStatus @default(TASLAK)
+  isPublished              Boolean        @default(false)
+  adminNote                String?
+  createdByAdmin           Boolean        @default(false)
 
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tags           Tag[]
   blogs          Blog[]
@@ -157,15 +159,16 @@ model ExpertProfile {
   forumAnswers   ForumAnswer[]
   expertRequests ExpertRequest[]
   comments       Comment[]
+  appointments   Appointment[]
 
   @@map("expert_profiles")
 }
 
 model Tag {
-  id        String          @id @default(uuid())
-  name      String          @unique
-  isActive  Boolean         @default(true)
-  profiles  ExpertProfile[]
+  id       String          @id @default(uuid())
+  name     String          @unique
+  isActive Boolean         @default(true)
+  profiles ExpertProfile[]
 
   @@map("tags")
 }
@@ -202,13 +205,13 @@ model ForumQuestion {
   expertProfileId String?
   expertProfile   ExpertProfile? @relation(fields: [expertProfileId], references: [id], onDelete: SetNull)
 
-  title           String
-  content         String         @db.Text
-  status          QuestionStatus @default(ONAY_BEKLIYOR)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  title     String
+  content   String         @db.Text
+  status    QuestionStatus @default(ONAY_BEKLIYOR)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
-  answers         ForumAnswer[]
+  answers ForumAnswer[]
 
   @@map("forum_questions")
 }
@@ -220,9 +223,9 @@ model ForumAnswer {
   expertProfileId String
   expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
 
-  content         String        @db.Text
-  isApproved      Boolean       @default(false)
-  createdAt       DateTime      @default(now())
+  content    String   @db.Text
+  isApproved Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
   @@map("forum_answers")
 }
@@ -234,9 +237,9 @@ model ExpertRequest {
   expertProfileId String
   expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
 
-  message         String        @db.Text
-  status          RequestStatus @default(BEKLEMEDE)
-  createdAt       DateTime      @default(now())
+  message   String        @db.Text
+  status    RequestStatus @default(BEKLEMEDE)
+  createdAt DateTime      @default(now())
 
   @@map("expert_requests")
 }
@@ -266,9 +269,9 @@ model TestResult {
 }
 
 model Blog {
-  id              String         @id @default(uuid())
-  expertProfileId String?
-  expertProfile   ExpertProfile?  @relation(fields: [expertProfileId], references: [id], onDelete: SetNull)
+  id                   String         @id @default(uuid())
+  expertProfileId      String?
+  expertProfile        ExpertProfile? @relation(fields: [expertProfileId], references: [id], onDelete: SetNull)
   title                String
   slug                 String         @unique
   content              String         @db.Text
@@ -280,8 +283,8 @@ model Blog {
   status               ApprovalStatus @default(TASLAK)
   adminNote            String?
 
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("blogs")
 }
@@ -313,30 +316,30 @@ model Package {
 }
 
 model ContactForm {
-  id            String         @id @default(uuid())
-  fullName      String
-  email         String
-  phone         String
-  subject       ContactSubject
-  message       String
-  isCorporate   Boolean           @default(false)
-  companyName   String?
-  employeeCount String?
-  kvkkApproved    Boolean           @default(false)
-  kvkkVersionId   String?
-  kvkkVersionRef  KvkkVersion?      @relation(fields: [kvkkVersionId], references: [id], onDelete: SetNull)
-  status          ContactFormStatus @default(YENI)
-  createdAt     DateTime          @default(now())
+  id             String            @id @default(uuid())
+  fullName       String
+  email          String
+  phone          String
+  subject        ContactSubject
+  message        String
+  isCorporate    Boolean           @default(false)
+  companyName    String?
+  employeeCount  String?
+  kvkkApproved   Boolean           @default(false)
+  kvkkVersionId  String?
+  kvkkVersionRef KvkkVersion?      @relation(fields: [kvkkVersionId], references: [id], onDelete: SetNull)
+  status         ContactFormStatus @default(YENI)
+  createdAt      DateTime          @default(now())
 
   @@map("contact_forms")
 }
 
 model KvkkVersion {
-  id          String        @id @default(uuid())
+  id          String   @id @default(uuid())
   version     String
   sections    Json
-  publishedAt DateTime      @default(now())
-  isActive    Boolean       @default(false)
+  publishedAt DateTime @default(now())
+  isActive    Boolean  @default(false)
 
   contactForms ContactForm[]
 
@@ -375,22 +378,212 @@ model Notification {
 }
 
 model SystemSetting {
-  id                String   @id @default(uuid())
-  whatsappNumber    String
-  instagramUrl      String
-  standardPrice     Decimal  @db.Decimal(10, 2) @default(1500.00)
-  discountedPrice   Decimal  @db.Decimal(10, 2) @default(1000.00)
-  logoUrl           String
-  videoUrl          String?
-  announcementItems    Json     @default("[]")
-  wheelSegments        Json     @default("[]")
-  wheelWinnerIndices   Json     @default("[]")
-  loginPopupSettings   Json     @default("{}")
-  staticPageContent    Json?
-  kvkkContent          Json?
-  kvkkVersion          String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  whatsappNumber     String
+  instagramUrl       String
+  standardPrice      Decimal  @default(1500.00) @db.Decimal(10, 2)
+  discountedPrice    Decimal  @default(1000.00) @db.Decimal(10, 2)
+  logoUrl            String
+  videoUrl           String?
+  announcementItems  Json     @default("[]")
+  wheelSegments      Json     @default("[]")
+  wheelWinnerIndices Json     @default("[]")
+  loginPopupSettings Json     @default("{}")
+  staticPageContent  Json?
+  kvkkContent        Json?
+  kvkkVersion        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+enum Channel {
+  WHATSAPP
+  INSTAGRAM
+  WEB
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING_AGENT
+  CLOSED
+}
+
+enum SenderType {
+  CLIENT
+  BOT
+  AGENT
+}
+
+model Contact {
+  id           String   @id @default(uuid())
+  phone        String?  @unique
+  instagramId  String?  @unique
+  fullName     String?
+  age          Int?
+  notes        String?  @db.Text
+  channel      Channel
+  createdAt    DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+
+  conversations Conversation[]
+  userId        String?        @unique
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointments  Appointment[]
+  leads         Lead[]
+
+  @@map("contacts")
+}
+
+model Conversation {
+  id            String             @id @default(uuid())
+  contactId     String
+  contact       Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel       Channel
+  isBotActive   Boolean            @default(true)
+  status        ConversationStatus @default(OPEN)
+  flaggedCrisis Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  lastMessageAt DateTime           @default(now())
+
+  messages            Message[]
+  leads               Lead[]
+  unansweredQuestions UnansweredQuestion[]
+
+  @@index([contactId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderType     SenderType
+  content        String       @db.Text
+  metaMessageId  String?      @unique
+  agentUserId    String?
+  agentUser      User?        @relation(fields: [agentUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+enum KnowledgeCategory {
+  FIYAT
+  HIZMET
+  PROSEDUR
+  SSS
+}
+
+enum KnowledgeSource {
+  MANUAL
+  SSS
+  CONVERSATION
+}
+
+model KnowledgeBase {
+  id          String            @id @default(uuid())
+  category    KnowledgeCategory
+  title       String
+  content     String            @db.Text
+  embedding   Float[]
+  isActive    Boolean           @default(true)
+  source      KnowledgeSource   @default(MANUAL)
+  sourceRefId String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([category])
+  @@index([source, sourceRefId])
+  @@map("knowledge_base")
+}
+
+enum LeadStatus {
+  YENI
+  ARANDI
+  ULASILAMADI
+  RANDEVU_OLUSTURULDU
+  VAZGECTI
+}
+
+model Lead {
+  id                String        @id @default(uuid())
+  contactId         String
+  contact           Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId    String?
+  conversation      Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  channel           Channel
+  serviceType       ServiceType
+  fullName          String
+  age               Int?
+  phone             String?
+  preferredCallTime String
+  summary           String        @db.Text
+  status            LeadStatus    @default(YENI)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([status, createdAt])
+  @@map("leads")
+}
+
+enum UnansweredStatus {
+  OPEN
+  RESOLVED
+}
+
+model UnansweredQuestion {
+  id             String           @id @default(uuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  question       String           @db.Text
+  topScore       Float?
+  status         UnansweredStatus @default(OPEN)
+  createdAt      DateTime         @default(now())
+
+  @@index([status, createdAt])
+  @@map("unanswered_questions")
+}
+
+enum ServiceType {
+  BIREYSEL
+  CIFT
+  AILE
+  COCUK_ERGEN
+  EMDR
+  ON_GORUSME
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  FREE
+}
+
+model Appointment {
+  id              String            @id @default(uuid())
+  contactId       String
+  contact         Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  therapistId     String
+  therapist       ExpertProfile     @relation(fields: [therapistId], references: [id], onDelete: Restrict)
+  serviceType     ServiceType
+  scheduledAt     DateTime
+  durationMinutes Int               @default(45)
+  status          AppointmentStatus @default(SCHEDULED)
+  paymentStatus   PaymentStatus     @default(PENDING)
+  roomToken       String            @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([therapistId, scheduledAt])
+  @@index([contactId])
+  @@map("appointments")
 }

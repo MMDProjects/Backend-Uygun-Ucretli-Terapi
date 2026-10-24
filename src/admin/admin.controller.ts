@@ -380,6 +380,11 @@ export class AdminController {
   }
 
   // SSS
+  @Post('knowledge/reindex')
+  reindexKnowledge() {
+    return this.adminService.reindexAllSss();
+  }
+
   @Get('sss')
   getSss() {
     return this.adminService.getSss();

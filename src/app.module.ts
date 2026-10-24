@@ -19,6 +19,9 @@ import { BlogsModule } from './blogs/blogs.module';
 import { SssModule } from './sss/sss.module';
 import { ContactModule } from './contact/contact.module';
 import { PackagesModule } from './packages/packages.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { AssistantModule } from './assistant/assistant.module';
+import { InboxModule } from './inbox/inbox.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -46,6 +49,9 @@ import { RolesGuard } from './common/guards/roles.guard';
     SssModule,
     ContactModule,
     PackagesModule,
+    WebhooksModule,
+    AssistantModule,
+    InboxModule,
   ],
   providers: [
     AppService,
