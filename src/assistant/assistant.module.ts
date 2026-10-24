@@ -21,6 +21,11 @@ import { PromptBuilder } from './prompt-builder';
     MetaSenderService,
     AssistantService,
   ],
-  exports: [AssistantService, KnowledgeService, HandoffService, MetaSenderService],
+  exports: [
+    AssistantService,
+    KnowledgeService,
+    HandoffService,
+    MetaSenderService,
+  ],
 })
 export class AssistantModule {}

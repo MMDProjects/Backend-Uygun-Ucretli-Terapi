@@ -6,12 +6,16 @@ import { InboxEventsService } from '../inbox-events/inbox-events.service';
 
 function buildPrismaMock() {
   return {
-    $transaction: jest.fn<any, any>((ops: Promise<unknown>[]) => Promise.all(ops)),
+    $transaction: jest.fn<any, any>((ops: Promise<unknown>[]) =>
+      Promise.all(ops),
+    ),
     lead: {
       findMany: jest.fn<any, any>().mockResolvedValue([]),
       count: jest.fn<any, any>().mockResolvedValue(0),
       findUnique: jest.fn<any, any>().mockResolvedValue({ id: 'lead-1' }),
-      update: jest.fn<any, any>().mockResolvedValue({ id: 'lead-1', status: LeadStatus.ARANDI }),
+      update: jest
+        .fn<any, any>()
+        .mockResolvedValue({ id: 'lead-1', status: LeadStatus.ARANDI }),
     },
   };
 }
@@ -44,7 +48,12 @@ describe('LeadsAdminService', () => {
           orderBy: { createdAt: 'desc' },
         }),
       );
-      expect(result).toEqual({ data: [{ id: 'lead-1' }], total: 1, page: 2, limit: 10 });
+      expect(result).toEqual({
+        data: [{ id: 'lead-1' }],
+        total: 1,
+        page: 2,
+        limit: 10,
+      });
     });
 
     it('geçerli durum filtresini where koşuluna ekler', async () => {
@@ -63,7 +72,10 @@ describe('LeadsAdminService', () => {
     });
 
     it('sayfa ve limit geçersizse varsayılana çeker', async () => {
-      const result = await service.list({ page: Number.NaN, limit: Number.NaN });
+      const result = await service.list({
+        page: Number.NaN,
+        limit: Number.NaN,
+      });
       expect(result.page).toBe(1);
       expect(result.limit).toBe(20);
     });
@@ -71,7 +83,9 @@ describe('LeadsAdminService', () => {
 
   describe('updateStatus', () => {
     it('durumu günceller ve counts.changed yayar', async () => {
-      const result = await service.updateStatus('lead-1', { status: LeadStatus.ARANDI });
+      const result = await service.updateStatus('lead-1', {
+        status: LeadStatus.ARANDI,
+      });
 
       expect(prisma.lead.update).toHaveBeenCalledWith({
         where: { id: 'lead-1' },

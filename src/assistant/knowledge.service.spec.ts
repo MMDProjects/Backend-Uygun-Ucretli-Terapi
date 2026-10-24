@@ -190,7 +190,8 @@ describe('KnowledgeService', () => {
           source: 'SSS',
           sourceRefId: 'sss-1',
           title: 'Seans ücreti ne kadar?',
-          content: 'Soru: Seans ücreti ne kadar?\nCevap: Bireysel seans 2000 TL.',
+          content:
+            'Soru: Seans ücreti ne kadar?\nCevap: Bireysel seans 2000 TL.',
           embedding: [0.5, 0.5],
           isActive: true,
         },
@@ -212,7 +213,10 @@ describe('KnowledgeService', () => {
     });
 
     it('SSS pasifse KB kaydını siler ve embed etmez', async () => {
-      prisma.sss.findUnique.mockResolvedValue({ ...activeSss, isActive: false });
+      prisma.sss.findUnique.mockResolvedValue({
+        ...activeSss,
+        isActive: false,
+      });
 
       await build().syncSss('sss-1');
 
@@ -395,7 +399,10 @@ describe('KnowledgeService', () => {
 
     it('yalnızca isActive değişirse embed çağrılmaz', async () => {
       prisma.knowledgeBase.findUnique.mockResolvedValue(row);
-      prisma.knowledgeBase.update.mockResolvedValue({ ...row, isActive: false });
+      prisma.knowledgeBase.update.mockResolvedValue({
+        ...row,
+        isActive: false,
+      });
 
       await build().updateEntry('kb-1', { isActive: false });
 
@@ -411,7 +418,10 @@ describe('KnowledgeService', () => {
       openai.embed.mockRejectedValue(new OpenAiUnavailableError());
       prisma.knowledgeBase.update.mockResolvedValue(row);
 
-      await build().updateEntry('kb-1', { content: 'yeni içerik', isActive: true });
+      await build().updateEntry('kb-1', {
+        content: 'yeni içerik',
+        isActive: true,
+      });
 
       expect(prisma.knowledgeBase.update).toHaveBeenCalledWith({
         where: { id: 'kb-1' },
@@ -420,7 +430,10 @@ describe('KnowledgeService', () => {
     });
 
     it('SSS kaynaklı kayıtta 409 fırlatır', async () => {
-      prisma.knowledgeBase.findUnique.mockResolvedValue({ ...row, source: 'SSS' });
+      prisma.knowledgeBase.findUnique.mockResolvedValue({
+        ...row,
+        source: 'SSS',
+      });
 
       await expect(build().updateEntry('kb-1', { title: 'x' })).rejects.toThrow(
         ConflictException,
@@ -439,17 +452,27 @@ describe('KnowledgeService', () => {
 
   describe('deleteEntry', () => {
     it('MANUAL kaydı siler', async () => {
-      prisma.knowledgeBase.findUnique.mockResolvedValue({ id: 'kb-1', source: 'MANUAL' });
+      prisma.knowledgeBase.findUnique.mockResolvedValue({
+        id: 'kb-1',
+        source: 'MANUAL',
+      });
 
       await build().deleteEntry('kb-1');
 
-      expect(prisma.knowledgeBase.delete).toHaveBeenCalledWith({ where: { id: 'kb-1' } });
+      expect(prisma.knowledgeBase.delete).toHaveBeenCalledWith({
+        where: { id: 'kb-1' },
+      });
     });
 
     it('SSS kaynaklı kaydı silmez, 409 fırlatır', async () => {
-      prisma.knowledgeBase.findUnique.mockResolvedValue({ id: 'kb-2', source: 'SSS' });
+      prisma.knowledgeBase.findUnique.mockResolvedValue({
+        id: 'kb-2',
+        source: 'SSS',
+      });
 
-      await expect(build().deleteEntry('kb-2')).rejects.toThrow(ConflictException);
+      await expect(build().deleteEntry('kb-2')).rejects.toThrow(
+        ConflictException,
+      );
       expect(prisma.knowledgeBase.delete).not.toHaveBeenCalled();
     });
   });

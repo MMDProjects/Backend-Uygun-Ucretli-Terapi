@@ -77,9 +77,14 @@ export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
   private syncSssInBackground(sssId: string): void {
-    void this.knowledge.syncSss(sssId).catch((err) =>
-      this.logger.error(`SSS bilgi bankası senkronu başarısız (${sssId})`, err),
-    );
+    void this.knowledge
+      .syncSss(sssId)
+      .catch((err) =>
+        this.logger.error(
+          `SSS bilgi bankası senkronu başarısız (${sssId})`,
+          err,
+        ),
+      );
   }
 
   reindexAllSss() {

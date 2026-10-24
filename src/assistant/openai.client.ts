@@ -46,7 +46,10 @@ interface ChatCompletionResponse {
   choices: {
     message?: {
       content: string | null;
-      tool_calls?: { id: string; function: { name: string; arguments: string } }[];
+      tool_calls?: {
+        id: string;
+        function: { name: string; arguments: string };
+      }[];
     };
   }[];
 }

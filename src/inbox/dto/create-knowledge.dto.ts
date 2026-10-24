@@ -1,4 +1,11 @@
-import { IsBoolean, IsEnum, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { KnowledgeCategory } from '@prisma/client';
 
 export class CreateKnowledgeDto {

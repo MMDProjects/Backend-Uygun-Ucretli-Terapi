@@ -23,7 +23,9 @@ export class MetaSenderService {
       const phoneNumberId = this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID');
       token = this.config.get<string>('WHATSAPP_ACCESS_TOKEN');
       if (!phoneNumberId || !token) {
-        this.logger.warn('WhatsApp gönderimi atlandı: PHONE_NUMBER_ID veya ACCESS_TOKEN eksik');
+        this.logger.warn(
+          'WhatsApp gönderimi atlandı: PHONE_NUMBER_ID veya ACCESS_TOKEN eksik',
+        );
         return false;
       }
       url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
@@ -37,7 +39,9 @@ export class MetaSenderService {
       const accountId = this.config.get<string>('INSTAGRAM_ACCOUNT_ID');
       token = this.config.get<string>('INSTAGRAM_ACCESS_TOKEN');
       if (!accountId || !token) {
-        this.logger.warn('Instagram gönderimi atlandı: ACCOUNT_ID veya ACCESS_TOKEN eksik');
+        this.logger.warn(
+          'Instagram gönderimi atlandı: ACCOUNT_ID veya ACCESS_TOKEN eksik',
+        );
         return false;
       }
       url = `https://graph.instagram.com/${version}/${accountId}/messages`;
@@ -46,7 +50,9 @@ export class MetaSenderService {
         message: { text },
       };
     } else {
-      this.logger.warn(`Desteklenmeyen kanal için gönderim atlandı: ${channel}`);
+      this.logger.warn(
+        `Desteklenmeyen kanal için gönderim atlandı: ${channel}`,
+      );
       return false;
     }
 
@@ -61,7 +67,9 @@ export class MetaSenderService {
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => '');
-        this.logger.error(`Meta gönderimi başarısız (${channel}): HTTP ${res.status} ${detail}`);
+        this.logger.error(
+          `Meta gönderimi başarısız (${channel}): HTTP ${res.status} ${detail}`,
+        );
         return false;
       }
       return true;

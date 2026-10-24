@@ -7,7 +7,11 @@ import { MetaSenderService } from '../webhooks/meta-sender.service';
 import { KnowledgeService } from './knowledge.service';
 import { OpenAiClient, OpenAiMessage, OpenAiToolSchema } from './openai.client';
 import { PromptBuilder } from './prompt-builder';
-import { ASSISTANT_TOOLS, PERSONEL_SEBEP_VALUES, PersonelSebep } from './assistant-tools';
+import {
+  ASSISTANT_TOOLS,
+  PERSONEL_SEBEP_VALUES,
+  PersonelSebep,
+} from './assistant-tools';
 import { LeadsService, LeadToolArgs } from './leads.service';
 import { HandoffService } from './handoff.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
@@ -46,7 +50,10 @@ export class AssistantService {
     return this.enqueue(conversationId, () => this.runCrisis(conversationId));
   }
 
-  private enqueue(conversationId: string, task: () => Promise<void>): Promise<void> {
+  private enqueue(
+    conversationId: string,
+    task: () => Promise<void>,
+  ): Promise<void> {
     const previous = this.queues.get(conversationId) ?? Promise.resolve();
     const next = previous
       .then(task)
@@ -100,30 +107,46 @@ export class AssistantService {
       .catch(() => {});
   }
 
-  private async runIncoming(conversationId: string, latestText: string): Promise<void> {
+  private async runIncoming(
+    conversationId: string,
+    latestText: string,
+  ): Promise<void> {
     if (!this.isEnabled()) {
       return;
     }
 
     try {
       const conversation = await this.loadConversation(conversationId);
-      if (!conversation || !conversation.isBotActive || conversation.flaggedCrisis) {
+      if (
+        !conversation ||
+        !conversation.isBotActive ||
+        conversation.flaggedCrisis
+      ) {
         return;
       }
 
       const history = await this.loadHistory(conversationId);
       const search = await this.knowledge.search(latestText);
       if (search.items.length === 0) {
-        await this.knowledge.recordUnanswered(conversationId, latestText, search.topScore);
+        await this.knowledge.recordUnanswered(
+          conversationId,
+          latestText,
+          search.topScore,
+        );
       }
 
       const priceTable = await this.promptBuilder.buildPriceTable();
-      const knowledgeBlock = this.promptBuilder.buildKnowledgeContext(search.items);
+      const knowledgeBlock = this.promptBuilder.buildKnowledgeContext(
+        search.items,
+      );
       const systemContent = knowledgeBlock
         ? `${this.promptBuilder.buildSystemPrompt(priceTable)}\n\n${knowledgeBlock}`
         : this.promptBuilder.buildSystemPrompt(priceTable);
 
-      const messages: OpenAiMessage[] = [{ role: 'system', content: systemContent }, ...history];
+      const messages: OpenAiMessage[] = [
+        { role: 'system', content: systemContent },
+        ...history,
+      ];
       const tags = `${this.promptBuilder.buildChannelTag(conversation.channel, conversation.contact.phone)} ${this.promptBuilder.buildNowTag(new Date())}`;
       this.appendToLastUser(messages, latestText, tags);
 
@@ -133,7 +156,9 @@ export class AssistantService {
       );
       // LLM çalışırken personel panelden devraldıysa bot cevabı gönderilmez.
       if (!handedOffByTool && !(await this.isStillBotActive(conversationId))) {
-        this.logger.log(`Personel devraldı, bot yanıtı gönderilmedi (${conversationId})`);
+        this.logger.log(
+          `Personel devraldı, bot yanıtı gönderilmedi (${conversationId})`,
+        );
         return;
       }
       if (!finalText) {
@@ -147,10 +172,16 @@ export class AssistantService {
 
       const recipientId = this.recipientId(conversation);
       const sent = recipientId
-        ? await this.metaSender.sendText(conversation.channel, recipientId, finalText)
+        ? await this.metaSender.sendText(
+            conversation.channel,
+            recipientId,
+            finalText,
+          )
         : false;
       if (!sent) {
-        this.logger.warn(`Yanıt gönderilemedi, personele devrediliyor (${conversationId})`);
+        this.logger.warn(
+          `Yanıt gönderilemedi, personele devrediliyor (${conversationId})`,
+        );
         await this.handoffService.handoff(
           conversationId,
           'bilinmeyen_konu',
@@ -160,11 +191,17 @@ export class AssistantService {
       }
       await this.saveBotMessage(conversationId, finalText);
     } catch (err) {
-      this.logger.error(`Asistan yanıtı üretilemedi (${conversationId})`, err as Error);
+      this.logger.error(
+        `Asistan yanıtı üretilemedi (${conversationId})`,
+        err as Error,
+      );
       await this.handoffService
         .handoff(conversationId, 'bilinmeyen_konu', 'Asistan hata verdi')
         .catch((handoffErr) =>
-          this.logger.error(`Asistan devri başarısız (${conversationId})`, handoffErr),
+          this.logger.error(
+            `Asistan devri başarısız (${conversationId})`,
+            handoffErr,
+          ),
         );
     }
   }
@@ -181,7 +218,9 @@ export class AssistantService {
       if (result.toolCalls.length === 0) {
         return { text: result.content?.trim() || null, handedOffByTool };
       }
-      if (result.toolCalls.some((call) => call.name === 'personel_aktar_tool')) {
+      if (
+        result.toolCalls.some((call) => call.name === 'personel_aktar_tool')
+      ) {
         handedOffByTool = true;
       }
 
@@ -196,7 +235,11 @@ export class AssistantService {
       });
 
       for (const call of result.toolCalls) {
-        const output = await this.runTool(conversation, call.name, call.arguments);
+        const output = await this.runTool(
+          conversation,
+          call.name,
+          call.arguments,
+        );
         messages.push({ role: 'tool', tool_call_id: call.id, content: output });
       }
     }
@@ -231,7 +274,11 @@ export class AssistantService {
       if (!PERSONEL_SEBEP_VALUES.includes(sebep)) {
         return 'Geçersiz devir sebebi.';
       }
-      await this.handoffService.handoff(conversation.id, sebep, String(args.ozet ?? ''));
+      await this.handoffService.handoff(
+        conversation.id,
+        sebep,
+        typeof args.ozet === 'string' ? args.ozet : '',
+      );
       return 'Konuşma ekip personeline devredildi. Danışana kısa bir bilgilendirme mesajı yazın.';
     }
 
@@ -244,7 +291,7 @@ export class AssistantService {
     return this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: { contact: true },
-    }) as Promise<ConversationWithContact | null>;
+    });
   }
 
   private async loadHistory(conversationId: string): Promise<OpenAiMessage[]> {
@@ -266,7 +313,11 @@ export class AssistantService {
     return messages;
   }
 
-  private appendToLastUser(messages: OpenAiMessage[], latestText: string, tags: string): void {
+  private appendToLastUser(
+    messages: OpenAiMessage[],
+    latestText: string,
+    tags: string,
+  ): void {
     const suffix = `\n\n${tags}`;
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
@@ -278,7 +329,10 @@ export class AssistantService {
     messages.push({ role: 'user', content: `${latestText}${suffix}` });
   }
 
-  private async saveBotMessage(conversationId: string, content: string): Promise<void> {
+  private async saveBotMessage(
+    conversationId: string,
+    content: string,
+  ): Promise<void> {
     const message = await this.prisma.message.create({
       data: { conversationId, senderType: SenderType.BOT, content },
     });
@@ -300,7 +354,12 @@ export class AssistantService {
   }
 
   private historyLimit(): number {
-    const raw = Number(this.config.get<string>('ASSISTANT_HISTORY_LIMIT', String(DEFAULT_HISTORY_LIMIT)));
+    const raw = Number(
+      this.config.get<string>(
+        'ASSISTANT_HISTORY_LIMIT',
+        String(DEFAULT_HISTORY_LIMIT),
+      ),
+    );
     return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_HISTORY_LIMIT;
   }
 }

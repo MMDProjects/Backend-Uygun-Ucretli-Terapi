@@ -7,6 +7,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  BadRequestException,
   ForbiddenException,
   Logger,
   RawBodyRequest,
@@ -41,7 +42,15 @@ export class WebhooksController {
     const expected = this.config.get<string>('META_VERIFY_TOKEN');
 
     if (mode === 'subscribe' && expected && token === expected) {
-      return res.status(HttpStatus.OK).send(challenge);
+      // Meta'nın challenge'ı kısa bir sayı/kod; başka her şey reddedilir ve
+      // yanıt düz metin gider (sorgu parametresinin yansıtılması XSS'e açılmasın).
+      if (
+        typeof challenge !== 'string' ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(challenge)
+      ) {
+        throw new BadRequestException('Geçersiz hub.challenge');
+      }
+      return res.status(HttpStatus.OK).type('text/plain').send(challenge);
     }
     throw new ForbiddenException('Doğrulama başarısız');
   }
@@ -51,12 +60,8 @@ export class WebhooksController {
   @ApiExcludeEndpoint()
   async receive(@Req() req: RawBodyRequest<Request>) {
     const rawBody = req.rawBody ? req.rawBody.toString('utf8') : '';
-    const signature = req.headers['x-hub-signature-256'] as
-      | string
-      | undefined;
-    const secrets = parseAppSecrets(
-      this.config.get<string>('META_APP_SECRET'),
-    );
+    const signature = req.headers['x-hub-signature-256'] as string | undefined;
+    const secrets = parseAppSecrets(this.config.get<string>('META_APP_SECRET'));
 
     if (!verifyHmacSha256Signature(rawBody, signature, secrets)) {
       throw new ForbiddenException('Geçersiz imza');
@@ -65,7 +70,11 @@ export class WebhooksController {
     const body = req.body as MetaWebhookBody;
     const messages = this.webhooksService.extractMessages(body);
 
-    const newConversations: { conversationId: string; crisis: boolean; content: string }[] = [];
+    const newConversations: {
+      conversationId: string;
+      crisis: boolean;
+      content: string;
+    }[] = [];
     for (const msg of messages) {
       const outcome = await this.webhooksService.processIncomingMessage(msg);
       if (outcome?.isNew) {
@@ -82,7 +91,10 @@ export class WebhooksController {
         ? this.assistant.handleCrisis(item.conversationId)
         : this.assistant.handleIncoming(item.conversationId, item.content);
       void task.catch((err) =>
-        this.logger.error(`Asistan görevi başarısız (${item.conversationId})`, err),
+        this.logger.error(
+          `Asistan görevi başarısız (${item.conversationId})`,
+          err,
+        ),
       );
     }
 

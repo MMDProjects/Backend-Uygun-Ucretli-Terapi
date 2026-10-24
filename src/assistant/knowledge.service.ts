@@ -78,7 +78,10 @@ export class KnowledgeService {
     private readonly inboxEvents: InboxEventsService,
   ) {
     const raw = Number(
-      config.get<string>('ASSISTANT_SIMILARITY_THRESHOLD', String(DEFAULT_THRESHOLD)),
+      config.get<string>(
+        'ASSISTANT_SIMILARITY_THRESHOLD',
+        String(DEFAULT_THRESHOLD),
+      ),
     );
     this.threshold = Number.isFinite(raw) ? raw : DEFAULT_THRESHOLD;
   }
@@ -128,7 +131,9 @@ export class KnowledgeService {
       await this.upsertSss(sss);
     } catch (error) {
       if (error instanceof OpenAiUnavailableError) {
-        this.logger.warn(`SSS bilgi bankasına eklenmedi (${sssId}): OpenAI yok`);
+        this.logger.warn(
+          `SSS bilgi bankasına eklenmedi (${sssId}): OpenAI yok`,
+        );
         return;
       }
       throw error;
@@ -191,7 +196,10 @@ ${input.content}`);
     return this.prisma.knowledgeBase.create({ data });
   }
 
-  async updateEntry(id: string, patch: KnowledgeEntryPatch): Promise<KnowledgeBase> {
+  async updateEntry(
+    id: string,
+    patch: KnowledgeEntryPatch,
+  ): Promise<KnowledgeBase> {
     const existing = await this.findEditable(id);
     const data: Prisma.KnowledgeBaseUpdateInput = { ...patch };
 
@@ -252,7 +260,9 @@ ${content}`);
       return vector;
     } catch (error) {
       if (error instanceof OpenAiUnavailableError) {
-        this.logger.warn('Bilgi bankası kaydı embedding olmadan kaydedildi: OpenAI yok');
+        this.logger.warn(
+          'Bilgi bankası kaydı embedding olmadan kaydedildi: OpenAI yok',
+        );
         return [];
       }
       throw error;
@@ -265,7 +275,9 @@ ${content}`);
       throw new NotFoundException('Bilgi bankası kaydı bulunamadı.');
     }
     if (entry.source === KnowledgeSource.SSS) {
-      throw new ConflictException('SSS kaynaklı kayıtlar SSS ekranından yönetilir.');
+      throw new ConflictException(
+        'SSS kaynaklı kayıtlar SSS ekranından yönetilir.',
+      );
     }
     return entry;
   }

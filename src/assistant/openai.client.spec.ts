@@ -109,7 +109,9 @@ describe('OpenAiClient', () => {
           ],
         }),
       );
-      const client = new OpenAiClient(buildConfig({ OPENAI_API_KEY: 'sk-test' }));
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
 
       const result = await client.chat({
         messages: [{ role: 'user', content: 'randevu' }],
@@ -127,7 +129,9 @@ describe('OpenAiClient', () => {
       fetchSpy.mockResolvedValueOnce(
         jsonResponse({ choices: [{ message: { content: 'Tamam' } }] }),
       );
-      const client = new OpenAiClient(buildConfig({ OPENAI_API_KEY: 'sk-test' }));
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
 
       const result = await client.chat({
         messages: [{ role: 'user', content: 'x' }],
@@ -142,7 +146,9 @@ describe('OpenAiClient', () => {
       fetchSpy.mockResolvedValueOnce(
         new Response('{"error":"rate"}', { status: 429 }),
       );
-      const client = new OpenAiClient(buildConfig({ OPENAI_API_KEY: 'sk-test' }));
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
 
       await expect(
         client.chat({ messages: [{ role: 'user', content: 'x' }] }),
@@ -181,7 +187,9 @@ describe('OpenAiClient', () => {
           ],
         }),
       );
-      const client = new OpenAiClient(buildConfig({ OPENAI_API_KEY: 'sk-test' }));
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
 
       const vectors = await client.embed(['a', 'b']);
 
@@ -192,7 +200,9 @@ describe('OpenAiClient', () => {
     });
 
     it('boş girdide fetch çağırmadan boş dizi döndürür', async () => {
-      const client = new OpenAiClient(buildConfig({ OPENAI_API_KEY: 'sk-test' }));
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
 
       await expect(client.embed([])).resolves.toEqual([]);
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -200,7 +210,9 @@ describe('OpenAiClient', () => {
 
     it('HTTP hatasında Error fırlatır', async () => {
       fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 500 }));
-      const client = new OpenAiClient(buildConfig({ OPENAI_API_KEY: 'sk-test' }));
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
 
       await expect(client.embed(['x'])).rejects.toThrow('HTTP 500');
     });

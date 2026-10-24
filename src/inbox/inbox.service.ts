@@ -44,7 +44,7 @@ export class InboxService {
 
     const where: Prisma.ConversationWhereInput = {};
     if (query.status && query.status !== 'ALL') {
-      where.status = query.status as ConversationStatus;
+      where.status = query.status;
     }
     if (query.channel) where.channel = query.channel;
     if (query.crisis) where.flaggedCrisis = true;
@@ -65,7 +65,12 @@ export class InboxService {
         take: limit,
         include: {
           contact: {
-            select: { id: true, fullName: true, phone: true, instagramId: true },
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              instagramId: true,
+            },
           },
           messages: {
             orderBy: { createdAt: 'desc' },
@@ -100,7 +105,10 @@ export class InboxService {
         orderBy: { scheduledAt: 'asc' },
         include: {
           therapist: {
-            select: { title: true, user: { select: { firstName: true, lastName: true } } },
+            select: {
+              title: true,
+              user: { select: { firstName: true, lastName: true } },
+            },
           },
         },
       }),
@@ -214,7 +222,9 @@ export class InboxService {
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError) {
         if (err.code === 'P2002') {
-          throw new ConflictException('Bu telefon numarası başka bir danışana kayıtlı.');
+          throw new ConflictException(
+            'Bu telefon numarası başka bir danışana kayıtlı.',
+          );
         }
         if (err.code === 'P2025') {
           throw new NotFoundException('Danışan bulunamadı.');
@@ -264,7 +274,9 @@ export class InboxService {
     return conversation;
   }
 
-  private async lastClientMessageAt(conversationId: string): Promise<Date | null> {
+  private async lastClientMessageAt(
+    conversationId: string,
+  ): Promise<Date | null> {
     const last = await this.prisma.message.findFirst({
       where: { conversationId, senderType: SenderType.CLIENT },
       orderBy: { createdAt: 'desc' },

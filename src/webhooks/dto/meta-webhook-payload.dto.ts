@@ -32,6 +32,6 @@ export interface MetaInstagramMessagingEvent {
 }
 
 export interface MetaWebhookBody {
-  object: 'whatsapp_business_account' | 'instagram' | string;
+  object: string; // 'whatsapp_business_account' | 'instagram' | ileride başka
   entry: MetaWebhookEntry[];
 }

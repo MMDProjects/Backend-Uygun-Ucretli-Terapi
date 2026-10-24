@@ -158,7 +158,11 @@ describe('WebhooksService', () => {
                 sender: { id: 'ig-user-1' },
                 recipient: { id: 'ig-page-1' },
                 timestamp: 1700000000000,
-                message: { mid: 'mid.echo', text: 'Botun kendi mesajı', is_echo: true },
+                message: {
+                  mid: 'mid.echo',
+                  text: 'Botun kendi mesajı',
+                  is_echo: true,
+                },
               },
             ],
           },
@@ -252,7 +256,9 @@ describe('WebhooksService', () => {
       prisma.message.create.mockResolvedValue({ id: 'msg-9' });
       prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
 
-      await expect(service.processIncomingMessage(baseMsg)).resolves.toMatchObject({
+      await expect(
+        service.processIncomingMessage(baseMsg),
+      ).resolves.toMatchObject({
         isNew: true,
         messageId: 'msg-9',
       });
@@ -286,7 +292,9 @@ describe('WebhooksService', () => {
         }),
       );
 
-      await expect(service.processIncomingMessage(baseMsg)).resolves.toMatchObject({
+      await expect(
+        service.processIncomingMessage(baseMsg),
+      ).resolves.toMatchObject({
         conversationId: 'conv-1',
         isNew: false,
         crisis: false,
@@ -323,7 +331,11 @@ describe('WebhooksService', () => {
         where: { id: 'conv-1' },
         data: { isBotActive: false, flaggedCrisis: true },
       });
-      expect(result).toMatchObject({ conversationId: 'conv-1', isNew: true, crisis: true });
+      expect(result).toMatchObject({
+        conversationId: 'conv-1',
+        isNew: true,
+        crisis: true,
+      });
     });
   });
 });

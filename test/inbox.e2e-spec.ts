@@ -227,7 +227,12 @@ describe('Inbox (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/admin/unanswered/${QUESTION_UUID}/resolve`)
         .set('Authorization', bearerHeader(adminToken()))
-        .send({ addToKnowledge: true, category: 'HIZMET', title: 'B', content: 'C' })
+        .send({
+          addToKnowledge: true,
+          category: 'HIZMET',
+          title: 'B',
+          content: 'C',
+        })
         .expect(400);
     });
   });

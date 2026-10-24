@@ -82,18 +82,22 @@ describe('verifyHmacSha256Signature', () => {
   });
 
   it('doğru secret ve geçerli imza ile kabul eder', () => {
-    expect(verifyHmacSha256Signature(body, validSignature, [secret])).toBe(true);
+    expect(verifyHmacSha256Signature(body, validSignature, [secret])).toBe(
+      true,
+    );
   });
 
   it('yanlış secret ile reddeder', () => {
-    expect(verifyHmacSha256Signature(body, validSignature, ['wrong-secret'])).toBe(
-      false,
-    );
+    expect(
+      verifyHmacSha256Signature(body, validSignature, ['wrong-secret']),
+    ).toBe(false);
   });
 
   it('body değişmişse reddeder', () => {
     expect(
-      verifyHmacSha256Signature('{"field":"tampered"}', validSignature, [secret]),
+      verifyHmacSha256Signature('{"field":"tampered"}', validSignature, [
+        secret,
+      ]),
     ).toBe(false);
   });
 

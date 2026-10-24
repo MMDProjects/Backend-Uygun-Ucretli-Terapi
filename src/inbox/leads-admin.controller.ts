@@ -22,7 +22,11 @@ export class LeadsAdminController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
-    return this.leads.list({ status, page: Number(page), limit: Number(limit) });
+    return this.leads.list({
+      status,
+      page: Number(page),
+      limit: Number(limit),
+    });
   }
 
   @Patch(':id/status')

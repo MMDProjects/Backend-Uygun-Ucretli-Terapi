@@ -24,7 +24,8 @@ export class HandoffService {
   async handoff(
     conversationId: string,
     reason: HandoffReason,
-    summary: string,
+    // Elif'in devir özeti henüz saklanmıyor; inbox'ta gösterilmesi ayrı iş.
+    _summary: string,
   ): Promise<void> {
     const isCrisis = reason === 'acil_durum';
 

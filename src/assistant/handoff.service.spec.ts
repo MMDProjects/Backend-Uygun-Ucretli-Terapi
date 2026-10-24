@@ -19,7 +19,9 @@ describe('HandoffService', () => {
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    notifications = { notifyAdmins: jest.fn<any, any>().mockResolvedValue(undefined) };
+    notifications = {
+      notifyAdmins: jest.fn<any, any>().mockResolvedValue(undefined),
+    };
     inboxEvents = { emit: jest.fn<any, any>() };
     service = new HandoffService(
       prisma as unknown as PrismaService,

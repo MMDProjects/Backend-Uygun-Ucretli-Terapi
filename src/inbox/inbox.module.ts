@@ -20,6 +20,11 @@ import { UnansweredAdminController } from './unanswered-admin.controller';
     KnowledgeAdminController,
     AppointmentsAdminController,
   ],
-  providers: [InboxService, LeadsAdminService, KnowledgeAdminService, AppointmentsAdminService],
+  providers: [
+    InboxService,
+    LeadsAdminService,
+    KnowledgeAdminService,
+    AppointmentsAdminService,
+  ],
 })
 export class InboxModule {}

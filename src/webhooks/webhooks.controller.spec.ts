@@ -1,4 +1,8 @@
-import { ForbiddenException, RawBodyRequest } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  RawBodyRequest,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { WebhooksController } from './webhooks.controller';
@@ -7,10 +11,23 @@ import * as crypto from './crypto';
 import { AssistantService } from '../assistant/assistant.service';
 
 function buildAssistantMock() {
-  return {
-    handleIncoming: jest.fn().mockResolvedValue(undefined),
-    handleCrisis: jest.fn().mockResolvedValue(undefined),
-  } as unknown as jest.Mocked<AssistantService>;
+  const handleIncoming = jest.fn().mockResolvedValue(undefined);
+  const handleCrisis = jest.fn().mockResolvedValue(undefined);
+  const assistant = {
+    handleIncoming,
+    handleCrisis,
+  } as unknown as AssistantService;
+  return { assistant, handleIncoming, handleCrisis };
+}
+
+function buildServiceMock(processResult?: unknown, extracted: unknown[] = []) {
+  const extractMessages = jest.fn().mockReturnValue(extracted);
+  const processIncomingMessage = jest.fn().mockResolvedValue(processResult);
+  const service = {
+    extractMessages,
+    processIncomingMessage,
+  } as unknown as WebhooksService;
+  return { service, extractMessages, processIncomingMessage };
 }
 
 function buildConfigMock(values: Record<string, string>): ConfigService {
@@ -19,85 +36,93 @@ function buildConfigMock(values: Record<string, string>): ConfigService {
   } as unknown as ConfigService;
 }
 
-function buildResMock(): Response {
+function buildResMock() {
   const res = {} as Response;
-  res.status = jest.fn().mockReturnValue(res);
-  res.send = jest.fn().mockReturnValue(res);
-  return res;
+  const status = jest.fn().mockReturnValue(res);
+  const type = jest.fn().mockReturnValue(res);
+  const send = jest.fn().mockReturnValue(res);
+  Object.assign(res, { status, type, send });
+  return { res, status, type, send };
 }
 
 describe('WebhooksController', () => {
   describe('verify (GET)', () => {
-    it('doğru hub.verify_token ile challenge döner', () => {
-      const config = buildConfigMock({ META_VERIFY_TOKEN: 'secret-token' });
-      const service = {} as WebhooksService;
-      const controller = new WebhooksController(service, config, buildAssistantMock());
-      const res = buildResMock();
+    const config = buildConfigMock({ META_VERIFY_TOKEN: 'secret-token' });
 
-      controller.verify(
+    function buildController() {
+      return new WebhooksController(
+        {} as WebhooksService,
+        config,
+        buildAssistantMock().assistant,
+      );
+    }
+
+    it('doğru hub.verify_token ile challenge’ı düz metin olarak döner', () => {
+      const { res, status, type, send } = buildResMock();
+
+      buildController().verify(
         {
           'hub.mode': 'subscribe',
           'hub.verify_token': 'secret-token',
-          'hub.challenge': 'challenge-123',
+          'hub.challenge': '1158201444',
         },
         res,
       );
 
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.send).toHaveBeenCalledWith('challenge-123');
+      expect(status).toHaveBeenCalledWith(200);
+      expect(type).toHaveBeenCalledWith('text/plain');
+      expect(send).toHaveBeenCalledWith('1158201444');
     });
 
     it('yanlış token ile ForbiddenException fırlatır', () => {
-      const config = buildConfigMock({ META_VERIFY_TOKEN: 'secret-token' });
-      const service = {} as WebhooksService;
-      const controller = new WebhooksController(service, config, buildAssistantMock());
-      const res = buildResMock();
+      const { res } = buildResMock();
 
       expect(() =>
-        controller.verify(
+        buildController().verify(
           {
             'hub.mode': 'subscribe',
             'hub.verify_token': 'wrong-token',
-            'hub.challenge': 'challenge-123',
+            'hub.challenge': '1158201444',
           },
           res,
         ),
       ).toThrow(ForbiddenException);
     });
+
+    it('beklenmeyen karakter içeren challenge’ı yansıtmadan reddeder', () => {
+      const { res, send } = buildResMock();
+
+      expect(() =>
+        buildController().verify(
+          {
+            'hub.mode': 'subscribe',
+            'hub.verify_token': 'secret-token',
+            'hub.challenge': '<script>alert(1)</script>',
+          },
+          res,
+        ),
+      ).toThrow(BadRequestException);
+      expect(send).not.toHaveBeenCalled();
+    });
   });
 
   describe('receive (POST)', () => {
     const secret = 'test-secret';
+    const config = buildConfigMock({ META_APP_SECRET: secret });
+    const rawBody = '{"object":"whatsapp_business_account","entry":[]}';
 
-    function buildReqMock(body: unknown, rawBody: string, signature?: string) {
-      const buffer = Buffer.from(rawBody, 'utf8');
+    function buildReqMock(body: unknown, raw: string, signature?: string) {
       return {
-        rawBody: buffer,
+        rawBody: Buffer.from(raw, 'utf8'),
         body,
         headers: signature ? { 'x-hub-signature-256': signature } : {},
       } as unknown as RawBodyRequest<Request>;
     }
 
-    it('geçersiz imzada ForbiddenException fırlatır, service çağrılmaz', async () => {
-      const config = buildConfigMock({ META_APP_SECRET: secret });
-      const service = {
-        extractMessages: jest.fn(),
-        processIncomingMessage: jest.fn(),
-      } as unknown as jest.Mocked<WebhooksService>;
-      const controller = new WebhooksController(service, config, buildAssistantMock());
-      const rawBody = '{"object":"whatsapp_business_account","entry":[]}';
-      const req = buildReqMock(
-        JSON.parse(rawBody),
-        rawBody,
-        'sha256=invalid',
-      );
-
-      await expect(controller.receive(req)).rejects.toThrow(
-        ForbiddenException,
-      );
-      expect(service.extractMessages).not.toHaveBeenCalled();
-      expect(service.processIncomingMessage).not.toHaveBeenCalled();
-    });
+    function buildValidRequest() {
+      const validSignature = 'sha256=' + crypto.hmacSha256Hex(secret, rawBody);
+      return buildReqMock(JSON.parse(rawBody), rawBody, validSignature);
+    }
 
     const normalizedMessage = {
       channel: 'WHATSAPP',
@@ -107,72 +132,65 @@ describe('WebhooksController', () => {
       timestamp: new Date(),
     };
 
-    function buildValidRequest(rawBody: string) {
-      const validSignature = 'sha256=' + crypto.hmacSha256Hex(secret, rawBody);
-      return buildReqMock(JSON.parse(rawBody), rawBody, validSignature);
-    }
+    it('geçersiz imzada ForbiddenException fırlatır, service çağrılmaz', async () => {
+      const { service, extractMessages, processIncomingMessage } =
+        buildServiceMock();
+      const controller = new WebhooksController(
+        service,
+        config,
+        buildAssistantMock().assistant,
+      );
+      const req = buildReqMock(JSON.parse(rawBody), rawBody, 'sha256=invalid');
+
+      await expect(controller.receive(req)).rejects.toThrow(ForbiddenException);
+      expect(extractMessages).not.toHaveBeenCalled();
+      expect(processIncomingMessage).not.toHaveBeenCalled();
+    });
 
     it('geçerli imza ve body ile service doğru mesajlarla çağrılır', async () => {
-      const config = buildConfigMock({ META_APP_SECRET: secret });
-      const rawBody = '{"object":"whatsapp_business_account","entry":[]}';
-      const service = {
-        extractMessages: jest.fn().mockReturnValue([normalizedMessage]),
-        processIncomingMessage: jest.fn().mockResolvedValue({
-          conversationId: 'conv-1',
-          isNew: true,
-          crisis: false,
-        }),
-      } as unknown as jest.Mocked<WebhooksService>;
-      const assistant = buildAssistantMock();
+      const { service, extractMessages, processIncomingMessage } =
+        buildServiceMock(
+          { conversationId: 'conv-1', isNew: true, crisis: false },
+          [normalizedMessage],
+        );
+      const { assistant, handleIncoming, handleCrisis } = buildAssistantMock();
       const controller = new WebhooksController(service, config, assistant);
 
-      const result = await controller.receive(buildValidRequest(rawBody));
+      const result = await controller.receive(buildValidRequest());
 
-      expect(service.extractMessages).toHaveBeenCalledWith(JSON.parse(rawBody));
-      expect(service.processIncomingMessage).toHaveBeenCalledWith(normalizedMessage);
-      expect(assistant.handleIncoming).toHaveBeenCalledWith('conv-1', 'Merhaba');
-      expect(assistant.handleCrisis).not.toHaveBeenCalled();
+      expect(extractMessages).toHaveBeenCalledWith(JSON.parse(rawBody));
+      expect(processIncomingMessage).toHaveBeenCalledWith(normalizedMessage);
+      expect(handleIncoming).toHaveBeenCalledWith('conv-1', 'Merhaba');
+      expect(handleCrisis).not.toHaveBeenCalled();
       expect(result).toEqual({ received: true });
     });
 
     it('duplicate mesajda assistant çağrılmaz', async () => {
-      const config = buildConfigMock({ META_APP_SECRET: secret });
-      const rawBody = '{"object":"whatsapp_business_account","entry":[]}';
-      const service = {
-        extractMessages: jest.fn().mockReturnValue([normalizedMessage]),
-        processIncomingMessage: jest.fn().mockResolvedValue({
-          conversationId: 'conv-1',
-          isNew: false,
-          crisis: false,
-        }),
-      } as unknown as jest.Mocked<WebhooksService>;
-      const assistant = buildAssistantMock();
+      const { service } = buildServiceMock(
+        { conversationId: 'conv-1', isNew: false, crisis: false },
+        [normalizedMessage],
+      );
+      const { assistant, handleIncoming, handleCrisis } = buildAssistantMock();
       const controller = new WebhooksController(service, config, assistant);
 
-      await controller.receive(buildValidRequest(rawBody));
+      await controller.receive(buildValidRequest());
 
-      expect(assistant.handleIncoming).not.toHaveBeenCalled();
-      expect(assistant.handleCrisis).not.toHaveBeenCalled();
+      expect(handleIncoming).not.toHaveBeenCalled();
+      expect(handleCrisis).not.toHaveBeenCalled();
     });
 
     it('kriz işaretli yeni mesajda handleCrisis çağrılır', async () => {
-      const config = buildConfigMock({ META_APP_SECRET: secret });
-      const rawBody = '{"object":"whatsapp_business_account","entry":[]}';
-      const service = {
-        extractMessages: jest.fn().mockReturnValue([normalizedMessage]),
-        processIncomingMessage: jest.fn().mockResolvedValue({
-          conversationId: 'conv-1',
-          isNew: true,
-          crisis: true,
-        }),
-      } as unknown as jest.Mocked<WebhooksService>;
-      const assistant = buildAssistantMock();
+      const { service } = buildServiceMock(
+        { conversationId: 'conv-1', isNew: true, crisis: true },
+        [normalizedMessage],
+      );
+      const { assistant, handleIncoming, handleCrisis } = buildAssistantMock();
       const controller = new WebhooksController(service, config, assistant);
 
-      await controller.receive(buildValidRequest(rawBody));
+      await controller.receive(buildValidRequest());
 
-      expect(assistant.handleCrisis).toHaveBeenCalledWith('conv-1');
-      expect(assistant.handleIncoming).not.toHaveBeenCalled();
+      expect(handleCrisis).toHaveBeenCalledWith('conv-1');
+      expect(handleIncoming).not.toHaveBeenCalled();
     });
   });
 });

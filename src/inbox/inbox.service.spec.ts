@@ -1,6 +1,5 @@
 import { BadGatewayException, ConflictException } from '@nestjs/common';
 import { InboxService } from './inbox.service';
-import { PrismaService } from '../prisma/prisma.service';
 import { MetaSenderService } from '../webhooks/meta-sender.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 
@@ -50,7 +49,7 @@ describe('InboxService', () => {
     metaSender = { sendText: jest.fn<any, any>().mockResolvedValue(true) };
     inboxEvents = { emit: jest.fn<any, any>(), stream: jest.fn<any, any>() };
     service = new InboxService(
-      prisma as unknown as PrismaService,
+      prisma,
       metaSender as unknown as MetaSenderService,
       inboxEvents as unknown as InboxEventsService,
     );
@@ -134,19 +133,30 @@ describe('InboxService', () => {
         }),
       );
       prisma.message.findFirst.mockResolvedValue({ createdAt: new Date() });
-      prisma.message.create.mockResolvedValue({ id: 'msg-2', createdAt: new Date() });
+      prisma.message.create.mockResolvedValue({
+        id: 'msg-2',
+        createdAt: new Date(),
+      });
 
       await service.sendMessage('conv-1', { content: 'Selam' }, 'admin-1');
 
-      expect(metaSender.sendText).toHaveBeenCalledWith('INSTAGRAM', 'ig-99', 'Selam');
+      expect(metaSender.sendText).toHaveBeenCalledWith(
+        'INSTAGRAM',
+        'ig-99',
+        'Selam',
+      );
       expect(prisma.conversation.update).toHaveBeenCalledTimes(1);
       expect(prisma.conversation.update).not.toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ isBotActive: false }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ isBotActive: false }),
+        }),
       );
     });
 
     it('Meta gönderimi başarısızsa 502 döner ve mesaj kaydetmez', async () => {
-      prisma.conversation.findUnique.mockResolvedValue(conversation({ isBotActive: false }));
+      prisma.conversation.findUnique.mockResolvedValue(
+        conversation({ isBotActive: false }),
+      );
       prisma.message.findFirst.mockResolvedValue({ createdAt: new Date() });
       metaSender.sendText.mockResolvedValue(false);
 
@@ -163,12 +173,16 @@ describe('InboxService', () => {
         conversation({ flaggedCrisis: true, isBotActive: false }),
       );
 
-      await expect(service.handback('conv-1')).rejects.toThrow(ConflictException);
+      await expect(service.handback('conv-1')).rejects.toThrow(
+        ConflictException,
+      );
       expect(prisma.conversation.update).not.toHaveBeenCalled();
     });
 
     it('normal konuşmayı bota geri verir ve OPEN yapar', async () => {
-      prisma.conversation.findUnique.mockResolvedValue(conversation({ isBotActive: false }));
+      prisma.conversation.findUnique.mockResolvedValue(
+        conversation({ isBotActive: false }),
+      );
       prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
 
       await service.handback('conv-1');

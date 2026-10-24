@@ -33,8 +33,12 @@ describe('LeadsService', () => {
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    notifications = { notifyAdmins: jest.fn<any, any>().mockResolvedValue(undefined) };
-    mail = { sendNewLeadAdmin: jest.fn<any, any>().mockResolvedValue(undefined) };
+    notifications = {
+      notifyAdmins: jest.fn<any, any>().mockResolvedValue(undefined),
+    };
+    mail = {
+      sendNewLeadAdmin: jest.fn<any, any>().mockResolvedValue(undefined),
+    };
     inboxEvents = { emit: jest.fn<any, any>() };
     service = new LeadsService(
       prisma as unknown as PrismaService,
@@ -44,7 +48,7 @@ describe('LeadsService', () => {
     );
   });
 
-  it('Instagram\'da telefon yoksa kaydetmez ve ok=false döner', async () => {
+  it("Instagram'da telefon yoksa kaydetmez ve ok=false döner", async () => {
     const result = await service.createFromTool(
       { id: 'conv-1', channel: 'INSTAGRAM' },
       { id: 'contact-1', phone: null },
@@ -87,7 +91,7 @@ describe('LeadsService', () => {
     expect(before - since).toBeLessThanOrEqual(10 * 60 * 1000 + 1000);
   });
 
-  it('Instagram\'da telefon argümandan geldiyse Contact.phone yazılır ve lead oluşturulur', async () => {
+  it("Instagram'da telefon argümandan geldiyse Contact.phone yazılır ve lead oluşturulur", async () => {
     const result = await service.createFromTool(
       { id: 'conv-1', channel: 'INSTAGRAM' },
       { id: 'contact-1', phone: null },
@@ -124,11 +128,13 @@ describe('LeadsService', () => {
     expect(notifications.notifyAdmins).toHaveBeenCalledTimes(1);
     const [type, message] = notifications.notifyAdmins.mock.calls[0];
     expect(type).toBe('INFO');
-    expect(message).toBe('Yeni arama talebi: Ayşe Yılmaz, yarın 14:00, BIREYSEL');
+    expect(message).toBe(
+      'Yeni arama talebi: Ayşe Yılmaz, yarın 14:00, BIREYSEL',
+    );
     expect(message).not.toContain('GİZLİ ÖZET METNİ');
   });
 
-  it('WhatsApp\'ta contact.phone varken Contact güncellenmez, admin e-postası gönderilir', async () => {
+  it("WhatsApp'ta contact.phone varken Contact güncellenmez, admin e-postası gönderilir", async () => {
     const result = await service.createFromTool(
       { id: 'conv-1', channel: 'WHATSAPP' },
       { id: 'contact-1', phone: '905551112233' },

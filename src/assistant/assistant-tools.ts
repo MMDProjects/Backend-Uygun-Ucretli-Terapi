@@ -72,7 +72,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
           },
           telefon: {
             type: 'string',
-            description: 'Telefon numarası (yalnızca Instagram kanalında alınır)',
+            description:
+              'Telefon numarası (yalnızca Instagram kanalında alınır)',
           },
           arama_saati: {
             type: 'string',
@@ -80,7 +81,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
           },
           ozet: {
             type: 'string',
-            description: 'Kısa Türkçe özet: ne istiyor, hangi konu, daha önce destek alıp almadığı, tercih ettiği saat',
+            description:
+              'Kısa Türkçe özet: ne istiyor, hangi konu, daha önce destek alıp almadığı, tercih ettiği saat',
           },
         },
         required: ['hizmet', 'ad_soyad', 'arama_saati', 'ozet'],

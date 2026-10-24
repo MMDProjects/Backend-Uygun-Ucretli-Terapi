@@ -99,14 +99,21 @@ export class LeadsService {
       },
     });
 
-    if (conversation.channel === Channel.INSTAGRAM && !contact.phone && telefon) {
+    if (
+      conversation.channel === Channel.INSTAGRAM &&
+      !contact.phone &&
+      telefon
+    ) {
       try {
         await this.prisma.contact.update({
           where: { id: contact.id },
           data: { phone: telefon },
         });
       } catch (err) {
-        this.logger.error(`Instagram telefonu kaydedilemedi (${contact.id})`, err);
+        this.logger.error(
+          `Instagram telefonu kaydedilemedi (${contact.id})`,
+          err,
+        );
       }
     }
 

@@ -1,6 +1,14 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { KnowledgeCategory, KnowledgeSource, UnansweredStatus } from '@prisma/client';
+import {
+  KnowledgeCategory,
+  KnowledgeSource,
+  UnansweredStatus,
+} from '@prisma/client';
 import { KnowledgeAdminService } from './knowledge-admin.service';
 import { KnowledgeService } from '../assistant/knowledge.service';
 import { OpenAiClient } from '../assistant/openai.client';
@@ -12,20 +20,28 @@ const PII_MESSAGE =
 
 function buildPrismaMock() {
   return {
-    $transaction: jest.fn<any, any>((ops: Promise<unknown>[]) => Promise.all(ops)),
+    $transaction: jest.fn<any, any>((ops: Promise<unknown>[]) =>
+      Promise.all(ops),
+    ),
     unansweredQuestion: {
       findMany: jest.fn<any, any>().mockResolvedValue([]),
       count: jest.fn<any, any>().mockResolvedValue(0),
       findUnique: jest.fn<any, any>().mockResolvedValue({ id: 'q-1' }),
-      update: jest.fn<any, any>().mockResolvedValue({ id: 'q-1', status: UnansweredStatus.RESOLVED }),
+      update: jest
+        .fn<any, any>()
+        .mockResolvedValue({ id: 'q-1', status: UnansweredStatus.RESOLVED }),
     },
     knowledgeBase: {
       findMany: jest.fn<any, any>().mockResolvedValue([]),
       count: jest.fn<any, any>().mockResolvedValue(0),
       findFirst: jest.fn<any, any>().mockResolvedValue(null),
       findUnique: jest.fn<any, any>().mockResolvedValue(null),
-      create: jest.fn<any, any>(async ({ data }: any) => ({ id: 'kb-1', ...data })),
-      update: jest.fn<any, any>(async ({ data }: any) => ({ id: 'kb-1', ...data })),
+      create: jest.fn<any, any>(({ data }: any) =>
+        Promise.resolve({ id: 'kb-1', ...data }),
+      ),
+      update: jest.fn<any, any>(({ data }: any) =>
+        Promise.resolve({ id: 'kb-1', ...data }),
+      ),
       delete: jest.fn<any, any>().mockResolvedValue({}),
     },
   };
@@ -41,7 +57,9 @@ describe('KnowledgeAdminService', () => {
     prisma = buildPrismaMock();
     openai = { embed: jest.fn<any, any>().mockResolvedValue([[0.1, 0.2]]) };
     inboxEvents = { emit: jest.fn<any, any>() };
-    const config = { get: jest.fn((_k: string, def?: string) => def) } as unknown as ConfigService;
+    const config = {
+      get: jest.fn((_k: string, def?: string) => def),
+    } as unknown as ConfigService;
     const knowledge = new KnowledgeService(
       prisma as unknown as PrismaService,
       openai as unknown as OpenAiClient,
@@ -78,7 +96,10 @@ describe('KnowledgeAdminService', () => {
 
       expect(prisma.knowledgeBase.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ source: KnowledgeSource.MANUAL, sourceRefId: null }),
+          data: expect.objectContaining({
+            source: KnowledgeSource.MANUAL,
+            sourceRefId: null,
+          }),
         }),
       );
       expect(result).not.toHaveProperty('embedding');
@@ -167,8 +188,12 @@ describe('KnowledgeAdminService', () => {
       const result = await service.listKnowledge({ page: 1, limit: 20 });
 
       expect(result.total).toBe(2);
-      expect(result.data[0]).toEqual(expect.objectContaining({ id: 'a', hasEmbedding: true }));
-      expect(result.data[1]).toEqual(expect.objectContaining({ id: 'b', hasEmbedding: false }));
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({ id: 'a', hasEmbedding: true }),
+      );
+      expect(result.data[1]).toEqual(
+        expect.objectContaining({ id: 'b', hasEmbedding: false }),
+      );
       for (const row of result.data) {
         expect(row).not.toHaveProperty('embedding');
       }
@@ -204,7 +229,9 @@ describe('KnowledgeAdminService', () => {
         embedding: [],
       });
 
-      await expect(service.deleteKnowledge('sss-kb')).rejects.toThrow(ConflictException);
+      await expect(service.deleteKnowledge('sss-kb')).rejects.toThrow(
+        ConflictException,
+      );
       expect(prisma.knowledgeBase.delete).not.toHaveBeenCalled();
     });
   });

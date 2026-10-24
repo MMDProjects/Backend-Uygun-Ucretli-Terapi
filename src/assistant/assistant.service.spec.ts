@@ -3,7 +3,6 @@ import { AssistantService } from './assistant.service';
 import { OpenAiUnavailableError } from './openai.client';
 import { CRISIS_MESSAGE } from './crisis-message';
 import { PrismaService } from '../prisma/prisma.service';
-import { InboxEventsService } from '../inbox-events/inbox-events.service';
 
 const CONVERSATION = {
   id: 'conv-1',
@@ -20,9 +19,11 @@ function buildPrismaMock() {
       update: jest.fn<any, any>().mockResolvedValue({}),
     },
     message: {
-      findMany: jest.fn<any, any>().mockResolvedValue([
-        { senderType: 'CLIENT', content: 'Merhaba, randevu almak istiyorum' },
-      ]),
+      findMany: jest
+        .fn<any, any>()
+        .mockResolvedValue([
+          { senderType: 'CLIENT', content: 'Merhaba, randevu almak istiyorum' },
+        ]),
       create: jest.fn<any, any>().mockResolvedValue({}),
     },
   };
@@ -52,9 +53,13 @@ function buildDeps(enabled: boolean) {
     buildNowTag: jest.fn<any, any>().mockReturnValue('[ŞU AN]'),
   };
   const leads = { createFromTool: jest.fn<any, any>() };
-  const handoffService = { handoff: jest.fn<any, any>().mockResolvedValue(undefined) };
+  const handoffService = {
+    handoff: jest.fn<any, any>().mockResolvedValue(undefined),
+  };
   const metaSender = { sendText: jest.fn<any, any>().mockResolvedValue(true) };
-  const notifications = { notifyAdmins: jest.fn<any, any>().mockResolvedValue(undefined) };
+  const notifications = {
+    notifyAdmins: jest.fn<any, any>().mockResolvedValue(undefined),
+  };
   const inboxEvents = { emit: jest.fn<any, any>() };
 
   const service = new AssistantService(
@@ -128,7 +133,10 @@ describe('AssistantService', () => {
     it('bilgi bankasında eşleşme yoksa soruyu bilinmeyenlere kaydeder', async () => {
       const deps = buildDeps(true);
       deps.knowledge.search.mockResolvedValueOnce({ items: [], topScore: 0.1 });
-      deps.openai.chat.mockResolvedValueOnce({ content: 'Cevap', toolCalls: [] });
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
 
       await deps.service.handleIncoming('conv-1', 'Bilinmeyen soru');
 
@@ -157,7 +165,10 @@ describe('AssistantService', () => {
             },
           ],
         })
-        .mockResolvedValueOnce({ content: 'Teşekkürler, sizi arayacağız.', toolCalls: [] });
+        .mockResolvedValueOnce({
+          content: 'Teşekkürler, sizi arayacağız.',
+          toolCalls: [],
+        });
       deps.leads.createFromTool.mockResolvedValueOnce({
         ok: true,
         message: 'Arama talebi kaydedildi.',
@@ -168,7 +179,10 @@ describe('AssistantService', () => {
       expect(deps.leads.createFromTool).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'conv-1', channel: 'WHATSAPP' }),
         CONVERSATION.contact,
-        expect.objectContaining({ ad_soyad: 'Ayşe Yılmaz', hizmet: 'bireysel' }),
+        expect.objectContaining({
+          ad_soyad: 'Ayşe Yılmaz',
+          hizmet: 'bireysel',
+        }),
       );
 
       const secondCallMessages = deps.openai.chat.mock.calls[1][0].messages;
@@ -201,11 +215,17 @@ describe('AssistantService', () => {
             {
               id: 'call-2',
               name: 'personel_aktar_tool',
-              arguments: JSON.stringify({ sebep: 'sikayet', ozet: 'Şikayet var' }),
+              arguments: JSON.stringify({
+                sebep: 'sikayet',
+                ozet: 'Şikayet var',
+              }),
             },
           ],
         })
-        .mockResolvedValueOnce({ content: 'Ekibimiz ilgilenecek.', toolCalls: [] });
+        .mockResolvedValueOnce({
+          content: 'Ekibimiz ilgilenecek.',
+          toolCalls: [],
+        });
 
       await deps.service.handleIncoming('conv-1', 'Şikayetim var');
 
@@ -232,7 +252,10 @@ describe('AssistantService', () => {
 
     it('yanıt Meta’ya gönderilemezse personele devreder, BOT mesajı kaydetmez', async () => {
       const deps = buildDeps(true);
-      deps.openai.chat.mockResolvedValueOnce({ content: 'Cevap', toolCalls: [] });
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
       deps.metaSender.sendText.mockResolvedValueOnce(false);
 
       await deps.service.handleIncoming('conv-1', 'Merhaba');
@@ -247,7 +270,10 @@ describe('AssistantService', () => {
 
     it('LLM çalışırken personel devraldıysa bot yanıtını göndermez', async () => {
       const deps = buildDeps(true);
-      deps.openai.chat.mockResolvedValueOnce({ content: 'Cevap', toolCalls: [] });
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
       deps.prisma.conversation.findUnique
         .mockResolvedValueOnce(CONVERSATION)
         .mockResolvedValueOnce({ isBotActive: false });
@@ -272,7 +298,10 @@ describe('AssistantService', () => {
             },
           ],
         })
-        .mockResolvedValueOnce({ content: 'Ekibimize iletiyorum.', toolCalls: [] });
+        .mockResolvedValueOnce({
+          content: 'Ekibimize iletiyorum.',
+          toolCalls: [],
+        });
       deps.prisma.conversation.findUnique
         .mockResolvedValueOnce(CONVERSATION)
         .mockResolvedValue({ isBotActive: false });
@@ -321,7 +350,11 @@ describe('AssistantService', () => {
         CRISIS_MESSAGE,
       );
       expect(deps.prisma.message.create).toHaveBeenCalledWith({
-        data: { conversationId: 'conv-1', senderType: 'BOT', content: CRISIS_MESSAGE },
+        data: {
+          conversationId: 'conv-1',
+          senderType: 'BOT',
+          content: CRISIS_MESSAGE,
+        },
       });
       expect(deps.notifications.notifyAdmins).toHaveBeenCalledWith(
         'DANGER_PANIC',

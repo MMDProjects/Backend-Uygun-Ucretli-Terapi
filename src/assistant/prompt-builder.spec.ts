@@ -4,7 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { Channel, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PromptBuilder } from './prompt-builder';
-import { ELIF_SYSTEM_PROMPT, PROMPT_PRICE_TABLE } from './prompts/elif-system-prompt';
+import {
+  ELIF_SYSTEM_PROMPT,
+  PROMPT_PRICE_TABLE,
+} from './prompts/elif-system-prompt';
 import { CRISIS_MESSAGE } from './crisis-message';
 
 const PRICE_PLACEHOLDER = '{{FIYAT_TABLOSU}}';
@@ -20,7 +23,9 @@ function buildPrismaMock() {
 
 function buildConfigMock(values: Record<string, string> = {}) {
   return {
-    get: jest.fn((key: string, defaultValue?: string) => values[key] ?? defaultValue),
+    get: jest.fn(
+      (key: string, defaultValue?: string) => values[key] ?? defaultValue,
+    ),
   };
 }
 
@@ -68,15 +73,23 @@ describe('PromptBuilder', () => {
 
     it('ELIF_PRICE_SOURCE=packages iken Package tablosundan sortOrder sırasıyla tr-TR binlik ayırıcılı satırlar üretir', async () => {
       prisma.package.findMany.mockResolvedValue([
-        { name: 'Bireysel', sessionCount: 5, price: new Prisma.Decimal('5500') },
+        {
+          name: 'Bireysel',
+          sessionCount: 5,
+          price: new Prisma.Decimal('5500'),
+        },
         { name: 'Çift', sessionCount: 10, price: new Prisma.Decimal('1200.5') },
       ]);
       const { builder } = build({ ELIF_PRICE_SOURCE: 'packages' });
 
       const table = await builder.buildPriceTable();
 
-      expect(prisma.package.findMany).toHaveBeenCalledWith({ orderBy: { sortOrder: 'asc' } });
-      expect(table).toBe('Bireysel · 5 seans · 5.500 TL\nÇift · 10 seans · 1.200,5 TL');
+      expect(prisma.package.findMany).toHaveBeenCalledWith({
+        orderBy: { sortOrder: 'asc' },
+      });
+      expect(table).toBe(
+        'Bireysel · 5 seans · 5.500 TL\nÇift · 10 seans · 1.200,5 TL',
+      );
     });
   });
 

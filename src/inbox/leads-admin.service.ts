@@ -53,7 +53,12 @@ export class LeadsAdminService {
         orderBy: { createdAt: 'desc' },
         include: {
           contact: {
-            select: { id: true, fullName: true, phone: true, instagramId: true },
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              instagramId: true,
+            },
           },
         },
       }),

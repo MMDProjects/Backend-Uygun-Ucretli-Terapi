@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Channel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ELIF_SYSTEM_PROMPT, PROMPT_PRICE_TABLE } from './prompts/elif-system-prompt';
+import {
+  ELIF_SYSTEM_PROMPT,
+  PROMPT_PRICE_TABLE,
+} from './prompts/elif-system-prompt';
 
 export interface KnowledgeContextItem {
   title: string;
@@ -33,7 +36,9 @@ export class PromptBuilder {
     const packages = await this.prisma.package.findMany({
       orderBy: { sortOrder: 'asc' },
     });
-    const formatter = new Intl.NumberFormat(TR_LOCALE, { maximumFractionDigits: 2 });
+    const formatter = new Intl.NumberFormat(TR_LOCALE, {
+      maximumFractionDigits: 2,
+    });
     return packages
       .map(
         (pkg) =>
@@ -46,7 +51,9 @@ export class PromptBuilder {
     if (items.length === 0) {
       return '';
     }
-    const body = items.map((item) => `Soru: ${item.title}\nCevap: ${item.content}`).join('\n\n');
+    const body = items
+      .map((item) => `Soru: ${item.title}\nCevap: ${item.content}`)
+      .join('\n\n');
     return `[BİLGİ BANKASI — yalnızca aşağıdaki bilgilere dayanarak cevap ver]\n${body}`;
   }
 

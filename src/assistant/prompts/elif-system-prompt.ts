@@ -1,4 +1,3 @@
-/* eslint-disable */
 export const PROMPT_PRICE_TABLE = `BİREYSEL / YETİŞKİN
   Tek seans      1.200 TL
   5 seans        5.500 TL   · %8,3 indirim
