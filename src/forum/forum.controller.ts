@@ -22,6 +22,7 @@ import { CreateAnswerDto } from './dto/create-answer.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { parsePagination } from '../common/pagination';
 import type { User } from '@prisma/client';
 
 @ApiTags('forum')
@@ -50,8 +51,9 @@ export class ForumController {
   })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  findAll(@Query('page') page = '1', @Query('limit') limit = '10') {
-    return this.forumService.findAllPublic(+page, +limit);
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const p = parsePagination(page, limit, { defaultLimit: 10, maxLimit: 50 });
+    return this.forumService.findAllPublic(p.page, p.limit);
   }
 
   @Public()

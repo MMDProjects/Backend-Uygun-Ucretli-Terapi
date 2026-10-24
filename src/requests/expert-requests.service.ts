@@ -6,6 +6,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { User, RequestStatus } from '@prisma/client';
+import {
+  PaginationInput,
+  paginated,
+  parsePagination,
+} from '../common/pagination';
 
 @Injectable()
 export class ExpertRequestsService {
@@ -22,12 +27,12 @@ export class ExpertRequestsService {
     });
   }
 
-  async findAll(page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+  async findAll(page?: PaginationInput, limit?: PaginationInput) {
+    const pg = parsePagination(page, limit);
     const [data, total] = await this.prisma.$transaction([
       this.prisma.expertRequest.findMany({
-        skip,
-        take: limit,
+        skip: pg.skip,
+        take: pg.limit,
         orderBy: { createdAt: 'desc' },
         include: {
           user: {
@@ -48,7 +53,7 @@ export class ExpertRequestsService {
       }),
       this.prisma.expertRequest.count(),
     ]);
-    return { data, total, page, limit };
+    return paginated(data, total, pg.page, pg.limit);
   }
 
   async updateStatus(id: string, status: RequestStatus) {

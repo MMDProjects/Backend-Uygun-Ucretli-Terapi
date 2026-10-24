@@ -151,4 +151,46 @@ describe('Notifications (e2e)', () => {
         .expect(200); // controller 404 atmÄ±yor, updateMany count:0 dÃ¶ner
     });
   });
+
+  // ── GET /notifications/all ───────────────────────────────────────────────────
+
+  describe('GET /notifications/all', () => {
+    it('bildirimleri dizi olarak döner', async () => {
+      prismaMock.notification.findMany.mockResolvedValue([mockNotification]);
+
+      const res = await request(app.getHttpServer())
+        .get('/notifications/all')
+        .set('Authorization', bearerHeader(danisanToken()))
+        .expect(200);
+
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body).toHaveLength(1);
+    });
+
+    it('page ve limit parametrelerini skip ve take değerine çevirir', async () => {
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      await request(app.getHttpServer())
+        .get('/notifications/all?page=2&limit=10')
+        .set('Authorization', bearerHeader(danisanToken()))
+        .expect(200);
+
+      expect(prismaMock.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 10, take: 10 }),
+      );
+    });
+
+    it('bozuk limit değerinde varsayılan 50 kullanır', async () => {
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      await request(app.getHttpServer())
+        .get('/notifications/all?limit=abc')
+        .set('Authorization', bearerHeader(danisanToken()))
+        .expect(200);
+
+      expect(prismaMock.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 50 }),
+      );
+    });
+  });
 });

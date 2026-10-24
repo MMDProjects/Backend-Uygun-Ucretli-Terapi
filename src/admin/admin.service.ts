@@ -20,7 +20,24 @@ import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { UpsertSssDto } from './dto/upsert-sss.dto';
 import { UpsertPackageDto } from './dto/upsert-package.dto';
-import { RequestStatus, ApprovalStatus, Role } from '@prisma/client';
+import {
+  PaginationInput,
+  paginated,
+  parsePagination,
+} from '../common/pagination';
+import {
+  BLOG_APPROVAL_WHERE,
+  EXPERT_QUEUES,
+  isExpertQueue,
+} from './approval-queues';
+import {
+  RequestStatus,
+  ApprovalStatus,
+  ContactFormStatus,
+  QuestionStatus,
+  Prisma,
+  Role,
+} from '@prisma/client';
 
 /** Bugünün haftasının Pazartesisini döner */
 export function getThisMonday(): Date {
@@ -104,13 +121,9 @@ export class AdminService {
       pendingForumAnswers,
       newTestResults,
     ] = await this.prisma.$transaction([
-      this.prisma.expertProfile.count({
-        where: { status: 'ONAY_BEKLIYOR', isPublished: false },
-      }),
-      this.prisma.expertProfile.count({
-        where: { status: { in: ['REVIZE_GONDERILDI', 'PROFIL_GUNCELLENDI'] } },
-      }),
-      this.prisma.blog.count({ where: { status: 'ONAY_BEKLIYOR' } }),
+      this.prisma.expertProfile.count({ where: EXPERT_QUEUES.applications }),
+      this.prisma.expertProfile.count({ where: EXPERT_QUEUES.profileUpdates }),
+      this.prisma.blog.count({ where: BLOG_APPROVAL_WHERE }),
       this.prisma.comment.count({ where: { isApproved: false } }),
       this.prisma.forumQuestion.count({ where: { status: 'ONAY_BEKLIYOR' } }),
       this.prisma.expertRequest.count({ where: { status: 'BEKLEMEDE' } }),
@@ -130,20 +143,43 @@ export class AdminService {
     };
   }
 
-  async getExperts(page = 1, limit = 20, onlyApproved = false) {
-    const skip = (page - 1) * limit;
-    const where = onlyApproved
-      ? {
-          status: {
-            in: [ApprovalStatus.YAYINDA, ApprovalStatus.REVIZE_GONDERILDI],
-          },
-        }
-      : undefined;
+  async getExperts(
+    page?: PaginationInput,
+    limit?: PaginationInput,
+    filters: { onlyApproved?: boolean; search?: string; queue?: string } = {},
+  ) {
+    const pg = parsePagination(page, limit);
+    const { onlyApproved = false, search, queue } = filters;
+    if (queue && !isExpertQueue(queue))
+      throw new BadRequestException('Geçersiz queue');
+
+    const conditions: Prisma.ExpertProfileWhereInput[] = [];
+    if (onlyApproved) {
+      conditions.push({
+        status: {
+          in: [ApprovalStatus.YAYINDA, ApprovalStatus.REVIZE_GONDERILDI],
+        },
+      });
+    }
+    if (queue && isExpertQueue(queue)) conditions.push(EXPERT_QUEUES[queue]);
+    if (search) {
+      conditions.push({
+        user: {
+          OR: [
+            { firstName: { contains: search, mode: 'insensitive' } },
+            { lastName: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+      });
+    }
+    const where = conditions.length ? { AND: conditions } : undefined;
+
     const [data, total] = await this.prisma.$transaction([
       this.prisma.expertProfile.findMany({
         where,
-        skip,
-        take: limit,
+        skip: pg.skip,
+        take: pg.limit,
         orderBy: { createdAt: 'desc' },
         include: {
           user: {
@@ -161,7 +197,7 @@ export class AdminService {
       }),
       this.prisma.expertProfile.count({ where }),
     ]);
-    return { data, total, page, limit };
+    return paginated(data, total, pg.page, pg.limit);
   }
 
   async getExpertById(id: string) {
@@ -397,12 +433,31 @@ export class AdminService {
     });
   }
 
-  async getBlogs(page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+  async getBlogs(
+    page?: PaginationInput,
+    limit?: PaginationInput,
+    filters: { queue?: string; status?: string } = {},
+  ) {
+    const pg = parsePagination(page, limit);
+    const { queue, status } = filters;
+    if (queue && queue !== 'approvals')
+      throw new BadRequestException('Geçersiz queue');
+    if (
+      status &&
+      !Object.values(ApprovalStatus).includes(status as ApprovalStatus)
+    )
+      throw new BadRequestException('Geçersiz status');
+
+    const conditions: Prisma.BlogWhereInput[] = [];
+    if (queue) conditions.push(BLOG_APPROVAL_WHERE);
+    if (status) conditions.push({ status: status as ApprovalStatus });
+    const where = conditions.length ? { AND: conditions } : undefined;
+
     const [data, total] = await this.prisma.$transaction([
       this.prisma.blog.findMany({
-        skip,
-        take: limit,
+        where,
+        skip: pg.skip,
+        take: pg.limit,
         orderBy: { createdAt: 'desc' },
         include: {
           expertProfile: {
@@ -410,9 +465,9 @@ export class AdminService {
           },
         },
       }),
-      this.prisma.blog.count(),
+      this.prisma.blog.count({ where }),
     ]);
-    return { data, total, page, limit };
+    return paginated(data, total, pg.page, pg.limit);
   }
 
   async createAdminBlog(dto: {
@@ -670,8 +725,13 @@ export class AdminService {
   }
 
   async getForumQuestions(status?: string) {
+    if (
+      status &&
+      !Object.values(QuestionStatus).includes(status as QuestionStatus)
+    )
+      throw new BadRequestException('Geçersiz status');
     return this.prisma.forumQuestion.findMany({
-      where: status ? { status: status as any } : {},
+      where: status ? { status: status as QuestionStatus } : {},
       orderBy: { createdAt: 'desc' },
       include: {
         user: { select: { firstName: true, lastName: true, email: true } },
@@ -769,7 +829,7 @@ export class AdminService {
     return result;
   }
 
-  async getRequests(page = 1, limit = 20) {
+  async getRequests(page?: PaginationInput, limit?: PaginationInput) {
     return this.expertRequestsService.findAll(page, limit);
   }
 
@@ -832,24 +892,38 @@ export class AdminService {
     return this.prisma.tag.delete({ where: { id } });
   }
 
-  async getUsers(page: number, limit: number, search?: string) {
-    const skip = (page - 1) * limit;
-    const where = search
-      ? {
-          role: 'DANISAN' as const,
-          OR: [
-            { firstName: { contains: search, mode: 'insensitive' as const } },
-            { lastName: { contains: search, mode: 'insensitive' as const } },
-            { email: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : { role: 'DANISAN' as const };
+  async getUsers(
+    page?: PaginationInput,
+    limit?: PaginationInput,
+    search?: string,
+    status?: string,
+  ) {
+    const pg = parsePagination(page, limit);
+    const where: Prisma.UserWhereInput = { role: 'DANISAN' };
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: 'insensitive' } },
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    // active ve inactive birlikte ya da hiç gelmezse aktiflik filtresi uygulanmaz
+    const statuses = (status ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (statuses.some((s) => s !== 'active' && s !== 'inactive'))
+      throw new BadRequestException('Geçersiz status');
+    const hasActive = statuses.includes('active');
+    const hasInactive = statuses.includes('inactive');
+    if (hasActive !== hasInactive) where.isActive = hasActive;
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
         where,
-        skip,
-        take: limit,
+        skip: pg.skip,
+        take: pg.limit,
         select: {
           id: true,
           firstName: true,
@@ -864,20 +938,60 @@ export class AdminService {
       this.prisma.user.count({ where }),
     ]);
 
-    return { data, total, page, limit };
+    return paginated(data, total, pg.page, pg.limit);
   }
 
-  async getContactForms(page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+  async getContactForms(
+    page?: PaginationInput,
+    limit?: PaginationInput,
+    filters: {
+      isCorporate?: string;
+      status?: string;
+      search?: string;
+      email?: string;
+    } = {},
+  ) {
+    const pg = parsePagination(page, limit);
+    const { isCorporate, status, search, email } = filters;
+    const where: Prisma.ContactFormWhereInput = {};
+
+    if (isCorporate !== undefined) {
+      if (isCorporate !== 'true' && isCorporate !== 'false')
+        throw new BadRequestException('isCorporate true veya false olmalı');
+      where.isCorporate = isCorporate === 'true';
+    }
+    const statuses = (status ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (statuses.length) {
+      if (
+        !statuses.every((s) =>
+          Object.values(ContactFormStatus).includes(s as ContactFormStatus),
+        )
+      )
+        throw new BadRequestException('Geçersiz status');
+      where.status = { in: statuses as ContactFormStatus[] };
+    }
+    if (search) {
+      where.OR = [
+        { fullName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { message: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (email) where.email = { equals: email, mode: 'insensitive' };
+
     const [data, total] = await this.prisma.$transaction([
       this.prisma.contactForm.findMany({
-        skip,
-        take: limit,
+        where,
+        skip: pg.skip,
+        take: pg.limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.contactForm.count(),
+      this.prisma.contactForm.count({ where }),
     ]);
-    return { data, total, page, limit };
+    return paginated(data, total, pg.page, pg.limit);
   }
 
   async updateContactFormStatus(id: string, status: string) {
@@ -961,12 +1075,12 @@ export class AdminService {
   }
 
   async getAdminTestResults(
-    page = 1,
-    limit = 20,
+    page?: PaginationInput,
+    limit?: PaginationInput,
     testId?: string,
     search?: string,
   ) {
-    const skip = (page - 1) * limit;
+    const pg = parsePagination(page, limit);
     const where: any = {};
     if (testId) where.testId = testId;
     if (search) {
@@ -981,8 +1095,8 @@ export class AdminService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.testResult.findMany({
         where,
-        skip,
-        take: limit,
+        skip: pg.skip,
+        take: pg.limit,
         orderBy: { createdAt: 'desc' },
         include: {
           user: { select: { firstName: true, lastName: true, email: true } },
@@ -991,7 +1105,7 @@ export class AdminService {
       }),
       this.prisma.testResult.count({ where }),
     ]);
-    return { data, total, page, limit };
+    return paginated(data, total, pg.page, pg.limit);
   }
 
   async createExpertByAdmin(dto: CreateExpertByAdminDto) {

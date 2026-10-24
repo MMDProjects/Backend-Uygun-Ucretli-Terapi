@@ -25,6 +25,7 @@ import { CreateBlogDto } from './dto/create-blog.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { parsePagination } from '../common/pagination';
 import type { User } from '@prisma/client';
 
 @ApiTags('blogs')
@@ -37,8 +38,9 @@ export class BlogsController {
   @ApiOperation({ summary: 'Yayındaki blog yazıları (public)' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  findAll(@Query('page') page = '1', @Query('limit') limit = '10') {
-    return this.blogsService.findAllPublic(+page, +limit);
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const p = parsePagination(page, limit, { defaultLimit: 10, maxLimit: 50 });
+    return this.blogsService.findAllPublic(p.page, p.limit);
   }
 
   @Public()

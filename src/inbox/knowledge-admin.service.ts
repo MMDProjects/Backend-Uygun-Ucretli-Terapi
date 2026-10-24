@@ -12,6 +12,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { KnowledgeService } from '../assistant/knowledge.service';
+import { parsePagination } from '../common/pagination';
 import { ResolveUnansweredDto } from './dto/resolve-unanswered.dto';
 import { CreateKnowledgeDto } from './dto/create-knowledge.dto';
 import { UpdateKnowledgeDto } from './dto/update-knowledge.dto';
@@ -31,14 +32,6 @@ export interface ListUnansweredParams extends ListPagedParams {
 export interface ListKnowledgeParams extends ListPagedParams {
   source?: string;
   q?: string;
-}
-
-function normalizePage(page: number): number {
-  return Number.isInteger(page) && page >= 1 ? page : 1;
-}
-
-function normalizeLimit(limit: number): number {
-  return Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 100) : 20;
 }
 
 function isUnansweredStatus(value: string): value is UnansweredStatus {
@@ -63,8 +56,7 @@ export class KnowledgeAdminService {
   ) {}
 
   async listUnanswered(params: ListUnansweredParams) {
-    const page = normalizePage(params.page);
-    const limit = normalizeLimit(params.limit);
+    const { page, limit } = parsePagination(params.page, params.limit);
 
     const where: Prisma.UnansweredQuestionWhereInput = {};
     if (params.status) {
@@ -133,8 +125,7 @@ export class KnowledgeAdminService {
   }
 
   async listKnowledge(params: ListKnowledgeParams) {
-    const page = normalizePage(params.page);
-    const limit = normalizeLimit(params.limit);
+    const { page, limit } = parsePagination(params.page, params.limit);
 
     const where: Prisma.KnowledgeBaseWhereInput = {};
     if (params.source) {
