@@ -10,6 +10,7 @@ import { Observable } from 'rxjs';
 import { NotificationsService } from './notifications.service';
 import { SseService } from './sse.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { parsePagination } from '../common/pagination';
 import type { User } from '@prisma/client';
 
 @ApiTags('notifications')
@@ -48,8 +49,13 @@ export class NotificationsController {
   @Get('all')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Tüm bildirimler (okunmuş + okunmamış)' })
-  getAll(@CurrentUser() user: User, @Query('limit') limit = '50') {
-    return this.notificationsService.getAll(user.id, +limit);
+  getAll(
+    @CurrentUser() user: User,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const p = parsePagination(page, limit, { defaultLimit: 50, maxLimit: 100 });
+    return this.notificationsService.getAll(user.id, p.page, p.limit);
   }
 
   @Patch('read-all')

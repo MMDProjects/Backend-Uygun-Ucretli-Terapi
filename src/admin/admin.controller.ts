@@ -150,11 +150,17 @@ export class AdminController {
 
   @Get('experts')
   getExperts(
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('onlyApproved') onlyApproved?: string,
+    @Query('search') search?: string,
+    @Query('queue') queue?: string,
   ) {
-    return this.adminService.getExperts(+page, +limit, onlyApproved === 'true');
+    return this.adminService.getExperts(page, limit, {
+      onlyApproved: onlyApproved === 'true',
+      search,
+      queue,
+    });
   }
 
   @Get('experts/:id')
@@ -255,8 +261,13 @@ export class AdminController {
 
   // Blog yönetimi
   @Get('blogs')
-  getBlogs(@Query('page') page = '1', @Query('limit') limit = '20') {
-    return this.adminService.getBlogs(+page, +limit);
+  getBlogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('queue') queue?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.adminService.getBlogs(page, limit, { queue, status });
   }
 
   @Post('blogs')
@@ -342,8 +353,8 @@ export class AdminController {
 
   // Talepler
   @Get('requests')
-  getRequests(@Query('page') page = '1', @Query('limit') limit = '20') {
-    return this.adminService.getRequests(+page, +limit);
+  getRequests(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.adminService.getRequests(page, limit);
   }
 
   @Patch('requests/:id/status')
@@ -407,8 +418,20 @@ export class AdminController {
 
   // İletişim formu
   @Get('contact-forms')
-  getContactForms(@Query('page') page = '1', @Query('limit') limit = '20') {
-    return this.adminService.getContactForms(+page, +limit);
+  getContactForms(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('isCorporate') isCorporate?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('email') email?: string,
+  ) {
+    return this.adminService.getContactForms(page, limit, {
+      isCorporate,
+      status,
+      search,
+      email,
+    });
   }
 
   @Patch('contact-forms/:id/status')
@@ -423,11 +446,12 @@ export class AdminController {
   // Danışan listesi
   @Get('users')
   getUsers(
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('status') status?: string,
   ) {
-    return this.adminService.getUsers(+page, +limit, search);
+    return this.adminService.getUsers(page, limit, search, status);
   }
 
   // Admin/personel kullanıcı listesi
@@ -475,12 +499,12 @@ export class AdminController {
   @Get('test-results')
   @ApiOperation({ summary: 'Test sonuçlarını listele' })
   getTestResults(
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('testId') testId?: string,
     @Query('search') search?: string,
   ) {
-    return this.adminService.getAdminTestResults(+page, +limit, testId, search);
+    return this.adminService.getAdminTestResults(page, limit, testId, search);
   }
 
   // Etiket yönetimi

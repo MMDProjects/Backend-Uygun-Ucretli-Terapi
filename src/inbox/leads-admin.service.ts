@@ -7,19 +7,12 @@ import { LeadStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { UpdateLeadStatusDto } from './dto/update-lead-status.dto';
+import { parsePagination } from '../common/pagination';
 
 export interface ListLeadsParams {
   status?: string;
   page: number;
   limit: number;
-}
-
-function normalizePage(page: number): number {
-  return Number.isInteger(page) && page >= 1 ? page : 1;
-}
-
-function normalizeLimit(limit: number): number {
-  return Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 100) : 20;
 }
 
 function isLeadStatus(value: string): value is LeadStatus {
@@ -34,8 +27,7 @@ export class LeadsAdminService {
   ) {}
 
   async list(params: ListLeadsParams) {
-    const page = normalizePage(params.page);
-    const limit = normalizeLimit(params.limit);
+    const { page, limit } = parsePagination(params.page, params.limit);
 
     const where: Prisma.LeadWhereInput = {};
     if (params.status) {

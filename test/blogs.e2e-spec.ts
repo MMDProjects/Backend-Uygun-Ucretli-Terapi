@@ -301,4 +301,28 @@ describe('Blogs (e2e)', () => {
         .expect(403);
     });
   });
+
+  // ── GET /blogs pagination sınırları ──────────────────────────────────────────
+
+  describe('GET /blogs pagination sınırları', () => {
+    it('bozuk limit değerinde 500 yerine 200 döner ve varsayılan 10 kullanır', async () => {
+      prismaMock.$transaction.mockResolvedValue([[], 0]);
+
+      await request(app.getHttpServer()).get('/blogs?limit=abc').expect(200);
+
+      expect(prismaMock.blog.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 10 }),
+      );
+    });
+
+    it('limit en fazla 50 olur', async () => {
+      prismaMock.$transaction.mockResolvedValue([[], 0]);
+
+      await request(app.getHttpServer()).get('/blogs?limit=1000').expect(200);
+
+      expect(prismaMock.blog.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 50 }),
+      );
+    });
+  });
 });
