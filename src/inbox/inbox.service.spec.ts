@@ -34,6 +34,9 @@ function buildPrismaMock() {
       findMany: jest.fn<any, any>().mockResolvedValue([]),
     },
     appointment: { findMany: jest.fn<any, any>().mockResolvedValue([]) },
+    campaignRecipient: {
+      findFirst: jest.fn<any, any>().mockResolvedValue(null),
+    },
     unansweredQuestion: { count: jest.fn<any, any>().mockResolvedValue(0) },
     user: { findUnique: jest.fn<any, any>() },
     conversationRead: {
@@ -549,6 +552,35 @@ describe('InboxService', () => {
       expect(Date.now() - from).toBeGreaterThan(29 * 24 * HOUR);
       expect(Date.now() - from).toBeLessThan(31 * 24 * HOUR);
       expect(args.take).toBe(10);
+    });
+
+    it('kişinin son kampanya gönderimini lastCampaign olarak döner', async () => {
+      const sentAt = new Date(Date.now() - 2 * HOUR);
+      prisma.conversation.findUnique.mockResolvedValue(conversation());
+      prisma.message.findFirst.mockResolvedValue(null);
+      prisma.campaignRecipient.findFirst.mockResolvedValue({
+        status: 'READ',
+        sentAt,
+        campaign: { id: 'camp-1', name: 'Ekim duyurusu' },
+      });
+
+      const result = await service.getConversation('conv-1');
+
+      expect(result.lastCampaign).toEqual({
+        campaignId: 'camp-1',
+        name: 'Ekim duyurusu',
+        status: 'READ',
+        sentAt,
+      });
+    });
+
+    it('kampanya gönderimi yoksa lastCampaign null döner', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(conversation());
+      prisma.message.findFirst.mockResolvedValue(null);
+
+      const result = await service.getConversation('conv-1');
+
+      expect(result.lastCampaign).toBeNull();
     });
 
     it('danışan hiç yazmamışsa windowExpiresAt null döner', async () => {

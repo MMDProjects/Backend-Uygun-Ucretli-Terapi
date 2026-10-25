@@ -193,11 +193,33 @@ export class InboxService {
       this.lastClientMessageAt(id),
     ]);
 
+    // Kampanya mesajları konuşmaya yazılmadığı için kişi panelinde son gönderim ayrıca gösterilir
+    const lastCampaignRecipient = await this.prisma.campaignRecipient.findFirst(
+      {
+        where: { contactId, sentAt: { not: null } },
+        orderBy: { sentAt: 'desc' },
+        select: {
+          status: true,
+          sentAt: true,
+          campaign: { select: { id: true, name: true } },
+        },
+      },
+    );
+    const lastCampaign = lastCampaignRecipient
+      ? {
+          campaignId: lastCampaignRecipient.campaign.id,
+          name: lastCampaignRecipient.campaign.name,
+          status: lastCampaignRecipient.status,
+          sentAt: lastCampaignRecipient.sentAt,
+        }
+      : null;
+
     const window = this.messagingWindow(conversation.channel, lastClient);
     return {
       ...conversation,
       leads,
       appointments,
+      lastCampaign,
       windowOpen: window.open,
       windowExpiresAt: window.expiresAt?.toISOString() ?? null,
     };
