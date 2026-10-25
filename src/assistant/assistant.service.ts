@@ -12,9 +12,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MetaSenderService } from '../webhooks/meta-sender.service';
-import { KnowledgeService } from './knowledge.service';
+import { KnowledgeSearchResult, KnowledgeService } from './knowledge.service';
 import { OpenAiClient, OpenAiMessage, OpenAiToolSchema } from './openai.client';
 import { PromptBuilder } from './prompt-builder';
+import { buildContactContext } from './contact-context';
+import { RewriteOptions, rewriteQuery } from './query-rewriter';
 import {
   ASSISTANT_TOOLS,
   PERSONEL_SEBEP_VALUES,
@@ -29,6 +31,10 @@ import { CrisisAlertService } from './crisis-alert.service';
 
 const MAX_TOOL_TURNS = 3;
 const DEFAULT_HISTORY_LIMIT = 20;
+const DEFAULT_HISTORY_MAX_CHARS = 6000;
+const HISTORY_MESSAGE_MAX_CHARS = 1500;
+const DEFAULT_MAX_TOKENS = 600;
+const DEFAULT_TEMPERATURE = 0.4;
 const DEFAULT_DEBOUNCE_MS = 5000;
 const DEFAULT_MAX_REPLIES_PER_HOUR = 20;
 const DEFAULT_INSTAGRAM_MAX_CHARS = 1000;
@@ -53,7 +59,21 @@ interface DraftTool {
 }
 interface ToolContext {
   shadow: boolean;
+  // Önizlemede hiçbir araç çalışmaz; çağrılar yalnızca toplanır.
+  simulate: boolean;
   calls: DraftTool[];
+}
+// Cevabın hangi bilgiyle üretildiği (C7). Mesaj ve taslak kaydında tutulur.
+export type RetrievalRecord = {
+  query: string;
+  topScore: number | null;
+  threshold: number;
+  items: { id: string; title: string; source: string; score: number }[];
+};
+export interface AssistantPreview {
+  reply: string | null;
+  tools: { name: string; args: Record<string, unknown> }[];
+  retrieval: RetrievalRecord;
 }
 interface PendingTurn {
   timer: NodeJS.Timeout;
@@ -63,6 +83,41 @@ interface PendingTurn {
 
 const isUnsupported = (content: string): boolean =>
   content.startsWith(UNSUPPORTED_PREFIX);
+
+function toRetrieval(
+  query: string,
+  search: KnowledgeSearchResult,
+): RetrievalRecord {
+  return {
+    query,
+    topScore: search.topScore,
+    threshold: search.threshold,
+    items: search.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      source: item.source,
+      score: item.score,
+    })),
+  };
+}
+
+// En yeni mesajlardan başlayarak toplam karakter bütçesine sığanları tutar.
+function trimHistory(
+  messages: OpenAiMessage[],
+  maxChars: number,
+): OpenAiMessage[] {
+  let total = 0;
+  let start = messages.length;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    total += typeof message.content === 'string' ? message.content.length : 0;
+    if (total > maxChars) {
+      break;
+    }
+    start = i;
+  }
+  return messages.slice(start);
+}
 
 // Uzun metni kanal sınırına göre parçalar: önce boş satır, sonra cümle sonu,
 // en son boşluk. Hiçbir parça sınırı aşmaz.
@@ -248,7 +303,7 @@ export class AssistantService {
       return;
     }
     if (mode === AssistantMode.SHADOW) {
-      await this.saveDraft(conversation, CRISIS_MESSAGE, 'SHADOW', []);
+      await this.saveDraft(conversation, CRISIS_MESSAGE, 'SHADOW', [], null);
       return;
     }
     if (!(await this.deliver(conversation, CRISIS_MESSAGE))) {
@@ -298,37 +353,36 @@ export class AssistantService {
         return;
       }
 
-      const query = await this.buildSearchQuery(conversationId, latestText);
+      // Kayda giden metin birleşik orijinal metindir; arama yeniden yazılmış sorguyla yapılır.
+      const combined = await this.buildSearchQuery(conversationId, latestText);
       const history = await this.loadHistory(conversationId);
-      const search = await this.knowledge.search(query);
+      const { query, search } = await this.searchKnowledge(combined, history);
       if (search.items.length === 0) {
         await this.knowledge.recordUnanswered(
           conversationId,
-          query,
+          combined,
           search.topScore,
         );
       }
 
-      const priceTable = await this.promptBuilder.buildPriceTable();
-      const knowledgeBlock = this.promptBuilder.buildKnowledgeContext(
-        search.items,
-      );
-      const systemContent = knowledgeBlock
-        ? `${this.promptBuilder.buildSystemPrompt(priceTable)}\n\n${knowledgeBlock}`
-        : this.promptBuilder.buildSystemPrompt(priceTable);
-
-      const messages: OpenAiMessage[] = [
-        { role: 'system', content: systemContent },
-        ...history,
-      ];
       const tags = `${this.promptBuilder.buildChannelTag(conversation.channel, conversation.contact.phone)} ${this.promptBuilder.buildNowTag(new Date())}`;
-      this.appendToLastUser(messages, latestText, tags);
+      const messages = await this.buildMessages({
+        search,
+        history,
+        latestText,
+        tags,
+        contactBlock: await this.safeContactContext(conversation),
+      });
+      const retrieval = toRetrieval(query, search);
 
       const {
         text: finalText,
         handedOffByTool,
         calls,
-      } = await this.runToolLoop(conversation, messages, shadow);
+      } = await this.runToolLoop(conversation, messages, {
+        shadow,
+        simulate: false,
+      });
       // LLM çalışırken personel panelden devraldıysa bot cevabı gönderilmez.
       if (!handedOffByTool && !(await this.isStillBotActive(conversationId))) {
         this.logger.log(
@@ -350,11 +404,17 @@ export class AssistantService {
       }
 
       if (shadow) {
-        await this.saveDraft(conversation, finalText, draftMode, calls);
+        await this.saveDraft(
+          conversation,
+          finalText,
+          draftMode,
+          calls,
+          retrieval,
+        );
         return;
       }
 
-      if (!(await this.deliverWithNotice(conversation, finalText))) {
+      if (!(await this.deliverWithNotice(conversation, finalText, retrieval))) {
         this.logger.warn(
           `Yanıt gönderilemedi, personele devrediliyor (${conversationId})`,
         );
@@ -388,7 +448,7 @@ export class AssistantService {
   ): Promise<void> {
     const conversationId = conversation.id;
     if (shadow) {
-      await this.saveDraft(conversation, MEDIA_REPLY, draftMode, []);
+      await this.saveDraft(conversation, MEDIA_REPLY, draftMode, [], null);
       return;
     }
     if (!(await this.isStillBotActive(conversationId))) {
@@ -472,21 +532,109 @@ export class AssistantService {
     return true;
   }
 
-  private async runToolLoop(
+  // Arama sorgusunu gerekirse yeniden yazar, sonra bilgi bankasında arar.
+  private async searchKnowledge(
+    combined: string,
+    history: OpenAiMessage[],
+  ): Promise<{ query: string; search: KnowledgeSearchResult }> {
+    const query = await rewriteQuery(
+      this.openai,
+      history,
+      combined,
+      this.rewriteOptions(),
+    );
+    const search = await this.knowledge.search(query);
+    return { query, search };
+  }
+
+  // Modele giden mesajlar: ana prompt (+ bilgi bloğu), kişi bloğu, geçmiş, son mesaj.
+  private async buildMessages(input: {
+    search: KnowledgeSearchResult;
+    history: OpenAiMessage[];
+    latestText: string;
+    tags: string;
+    contactBlock: string | null;
+  }): Promise<OpenAiMessage[]> {
+    const priceTable = await this.promptBuilder.buildPriceTable();
+    const knowledgeBlock = this.promptBuilder.buildKnowledgeContext(
+      input.search.items,
+    );
+    const messages: OpenAiMessage[] = [
+      {
+        role: 'system',
+        content: `${this.promptBuilder.buildSystemPrompt(priceTable)}\n\n${knowledgeBlock}`,
+      },
+    ];
+    if (input.contactBlock) {
+      messages.push({ role: 'system', content: input.contactBlock });
+    }
+    messages.push(...input.history);
+    this.appendToLastUser(messages, input.latestText, input.tags);
+    return messages;
+  }
+
+  // Kişi bilgisi okunamazsa tur bu bilgisiz devam eder.
+  private async safeContactContext(
     conversation: ConversationWithContact,
+  ): Promise<string | null> {
+    try {
+      return await buildContactContext(this.prisma, conversation, {
+        includeNotes:
+          this.config.get<string>('ASSISTANT_INCLUDE_CONTACT_NOTES') === 'true',
+      });
+    } catch (err) {
+      this.logger.error(
+        `Kişi bilgisi okunamadı (${conversation.id})`,
+        err as Error,
+      );
+      return null;
+    }
+  }
+
+  // "Elif'e sor" önizlemesi: kayıt, gönderim ve araç çalıştırma yok; geçmiş ve kişi bilgisi yok.
+  async previewReply(message: string): Promise<AssistantPreview> {
+    const { query, search } = await this.searchKnowledge(message, []);
+    const messages = await this.buildMessages({
+      search,
+      history: [],
+      latestText: message,
+      tags: this.promptBuilder.buildNowTag(new Date()),
+      contactBlock: null,
+    });
+    const { text, calls } = await this.runToolLoop(null, messages, {
+      shadow: true,
+      simulate: true,
+    });
+    return {
+      reply: text,
+      tools: calls.map((call) => ({
+        name: call.name,
+        args: call.args,
+      })),
+      retrieval: toRetrieval(query, search),
+    };
+  }
+
+  private async runToolLoop(
+    conversation: ConversationWithContact | null,
     messages: OpenAiMessage[],
-    shadow: boolean,
+    opts: { shadow: boolean; simulate: boolean },
   ): Promise<{
     text: string | null;
     handedOffByTool: boolean;
     calls: DraftTool[];
   }> {
     const tools = ASSISTANT_TOOLS as OpenAiToolSchema[];
-    const ctx: ToolContext = { shadow, calls: [] };
+    const ctx: ToolContext = {
+      shadow: opts.shadow,
+      simulate: opts.simulate,
+      calls: [],
+    };
+    const tuning = this.chatTuning();
     let handedOffByTool = false;
 
     for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
-      const result = await this.openai.chat({ messages, tools });
+      const result = await this.openai.chat({ messages, tools, ...tuning });
       if (result.toolCalls.length === 0) {
         return {
           text: result.content?.trim() || null,
@@ -496,7 +644,7 @@ export class AssistantService {
       }
       // Gölge modda devir yapılmaz; bu yüzden bayrak kalkmaz.
       if (
-        !shadow &&
+        !opts.shadow &&
         result.toolCalls.some((call) => call.name === 'personel_aktar_tool')
       ) {
         handedOffByTool = true;
@@ -523,7 +671,7 @@ export class AssistantService {
       }
     }
 
-    const last = await this.openai.chat({ messages });
+    const last = await this.openai.chat({ messages, ...tuning });
     return {
       text: last.content?.trim() || null,
       handedOffByTool,
@@ -532,7 +680,7 @@ export class AssistantService {
   }
 
   private async runTool(
-    conversation: ConversationWithContact,
+    conversation: ConversationWithContact | null,
     name: string,
     rawArguments: string,
     ctx: ToolContext,
@@ -544,10 +692,14 @@ export class AssistantService {
       return 'Araç argümanları geçersiz JSON. Bilgileri düzeltip tekrar deneyin.';
     }
 
-    // Gölge modda kayıt ya da devir yapılmaz; çağrı taslağa yazılır.
-    if (ctx.shadow && DRAFT_TOOL_NAMES.includes(name)) {
+    // Önizlemede ve gölge modda kayıt ya da devir yapılmaz; çağrı yalnızca not düşülür.
+    if (ctx.simulate || (ctx.shadow && DRAFT_TOOL_NAMES.includes(name))) {
       ctx.calls.push({ name, args: args as Prisma.InputJsonObject });
       return SHADOW_TOOL_RESULT;
+    }
+    // Yalnızca önizleme konuşmasız çalışır; yukarıdaki dal bunu kapsar.
+    if (!conversation) {
+      return `Bilinmeyen araç: ${name}`;
     }
 
     if (name === 'lead_tool') {
@@ -594,15 +746,23 @@ export class AssistantService {
 
     const messages: OpenAiMessage[] = [];
     for (const row of [...rows].reverse()) {
+      const content = row.content.slice(0, HISTORY_MESSAGE_MAX_CHARS);
       if (row.senderType === SenderType.CLIENT) {
         if (!isUnsupported(row.content)) {
-          messages.push({ role: 'user', content: row.content });
+          messages.push({ role: 'user', content });
         }
       } else {
-        messages.push({ role: 'assistant', content: row.content });
+        messages.push({ role: 'assistant', content });
       }
     }
-    return messages;
+    return trimHistory(
+      messages,
+      this.intSetting(
+        'ASSISTANT_HISTORY_MAX_CHARS',
+        DEFAULT_HISTORY_MAX_CHARS,
+        1,
+      ),
+    );
   }
 
   private appendToLastUser(
@@ -625,9 +785,10 @@ export class AssistantService {
   private async deliverWithNotice(
     conversation: ConversationWithContact,
     text: string,
+    retrieval: RetrievalRecord | null = null,
   ): Promise<boolean> {
     await this.sendNoticeOnce(conversation);
-    return this.deliver(conversation, text);
+    return this.deliver(conversation, text, retrieval);
   }
 
   // Aydınlatma gönderilemezse hata vermez; bir sonraki cevapta tekrar denenir.
@@ -666,13 +827,14 @@ export class AssistantService {
   private async deliver(
     conversation: ConversationWithContact,
     text: string,
+    retrieval: RetrievalRecord | null = null,
   ): Promise<boolean> {
     const recipientId = this.recipientId(conversation);
     if (!recipientId) {
       return false;
     }
     const parts = splitForChannel(text, this.maxCharsFor(conversation.channel));
-    for (const part of parts) {
+    for (const [index, part] of parts.entries()) {
       const res = await this.metaSender.sendText(
         conversation.channel,
         recipientId,
@@ -681,7 +843,13 @@ export class AssistantService {
       if (!res.ok) {
         return false;
       }
-      await this.saveBotMessage(conversation.id, part, res.messageId);
+      // Kaynak bilgisi yalnızca ilk parçaya yazılır.
+      await this.saveBotMessage(
+        conversation.id,
+        part,
+        res.messageId,
+        index === 0 ? retrieval : null,
+      );
     }
     return true;
   }
@@ -690,6 +858,7 @@ export class AssistantService {
     conversationId: string,
     content: string,
     metaMessageId?: string,
+    retrieval: RetrievalRecord | null = null,
   ): Promise<void> {
     const message = await this.prisma.message.create({
       data: {
@@ -697,6 +866,7 @@ export class AssistantService {
         senderType: SenderType.BOT,
         content,
         metaMessageId: metaMessageId ?? null,
+        retrieval: retrieval ?? undefined,
       },
     });
     await this.prisma.conversation.update({
@@ -712,6 +882,7 @@ export class AssistantService {
     content: string,
     mode: DraftMode,
     calls: DraftTool[],
+    retrieval: RetrievalRecord | null,
   ): Promise<void> {
     const message = await this.prisma.message.create({
       data: {
@@ -723,6 +894,7 @@ export class AssistantService {
           mode,
           tools: calls.map((call) => ({ name: call.name, args: call.args })),
         },
+        retrieval: retrieval ?? undefined,
       },
     });
     this.inboxEvents.emit('message.created', {
@@ -749,6 +921,38 @@ export class AssistantService {
 
   private debounceMs(): number {
     return this.intSetting('ASSISTANT_DEBOUNCE_MS', DEFAULT_DEBOUNCE_MS, 0);
+  }
+
+  private rewriteOptions(): RewriteOptions {
+    return {
+      enabled: this.config.get<string>('ASSISTANT_QUERY_REWRITE') !== 'false',
+      model: this.config.get<string>('OPENAI_REWRITE_MODEL') || undefined,
+    };
+  }
+
+  private chatTuning(): { maxTokens: number; temperature: number } {
+    return {
+      maxTokens: this.intSetting('ASSISTANT_MAX_TOKENS', DEFAULT_MAX_TOKENS, 1),
+      temperature: this.floatSetting(
+        'ASSISTANT_TEMPERATURE',
+        DEFAULT_TEMPERATURE,
+        0,
+        2,
+      ),
+    };
+  }
+
+  private floatSetting(
+    key: string,
+    fallback: number,
+    min: number,
+    max: number,
+  ): number {
+    const raw = this.config.get<string>(key);
+    const value = raw === undefined || raw.trim() === '' ? NaN : Number(raw);
+    return Number.isFinite(value) && value >= min && value <= max
+      ? value
+      : fallback;
   }
 
   private maxRepliesPerHour(): number {

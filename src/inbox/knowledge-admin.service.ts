@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   KnowledgeBase,
@@ -12,6 +13,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { KnowledgeService } from '../assistant/knowledge.service';
+import { OpenAiUnavailableError } from '../assistant/openai.client';
 import { parsePagination } from '../common/pagination';
 import { ResolveUnansweredDto } from './dto/resolve-unanswered.dto';
 import { CreateKnowledgeDto } from './dto/create-knowledge.dto';
@@ -19,6 +21,8 @@ import { UpdateKnowledgeDto } from './dto/update-knowledge.dto';
 
 const PII_CONFIRM_MESSAGE =
   'Bilgi bankasına eklemeden önce kişisel bilgilerin çıkarıldığını onaylayın.';
+const OPENAI_MISSING_MESSAGE = 'OpenAI anahtarı tanımlı değil';
+const EXCERPT_LENGTH = 300;
 
 export interface ListPagedParams {
   page: number;
@@ -27,7 +31,11 @@ export interface ListPagedParams {
 
 export interface ListUnansweredParams extends ListPagedParams {
   status?: string;
+  sort?: string;
 }
+
+export const UNANSWERED_SORTS = ['recent', 'count'] as const;
+export type UnansweredSort = (typeof UNANSWERED_SORTS)[number];
 
 export interface ListKnowledgeParams extends ListPagedParams {
   source?: string;
@@ -36,6 +44,10 @@ export interface ListKnowledgeParams extends ListPagedParams {
 
 function isUnansweredStatus(value: string): value is UnansweredStatus {
   return (Object.values(UnansweredStatus) as string[]).includes(value);
+}
+
+function isUnansweredSort(value: string): value is UnansweredSort {
+  return (UNANSWERED_SORTS as readonly string[]).includes(value);
 }
 
 function isKnowledgeSource(value: string): value is KnowledgeSource {
@@ -65,18 +77,28 @@ export class KnowledgeAdminService {
       }
       where.status = params.status;
     }
+    const sort = params.sort ?? 'recent';
+    if (!isUnansweredSort(sort)) {
+      throw new BadRequestException('Geçersiz sıralama.');
+    }
+    const orderBy: Prisma.UnansweredQuestionOrderByWithRelationInput[] =
+      sort === 'count'
+        ? [{ askCount: 'desc' }, { lastAskedAt: 'desc' }]
+        : [{ lastAskedAt: 'desc' }];
 
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.unansweredQuestion.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         select: {
           id: true,
           question: true,
           topScore: true,
           status: true,
+          askCount: true,
+          lastAskedAt: true,
           createdAt: true,
           conversationId: true,
           conversation: {
@@ -116,12 +138,50 @@ export class KnowledgeAdminService {
       });
     }
 
-    return this.markResolved(id);
+    return this.markStatus(id, UnansweredStatus.RESOLVED);
   }
 
   async dismissUnanswered(id: string) {
     await this.ensureQuestion(id);
-    return this.markResolved(id);
+    return this.markStatus(id, UnansweredStatus.DISMISSED);
+  }
+
+  async knowledgeStats() {
+    const [total, missingEmbedding] = await this.prisma.$transaction([
+      this.prisma.knowledgeBase.count(),
+      this.prisma.knowledgeBase.count({
+        where: { embedding: { isEmpty: true } },
+      }),
+    ]);
+    return { total, missingEmbedding };
+  }
+
+  async reindexMissing() {
+    try {
+      return await this.knowledge.reindexMissing();
+    } catch (error) {
+      if (error instanceof OpenAiUnavailableError) {
+        throw new ServiceUnavailableException(OPENAI_MISSING_MESSAGE);
+      }
+      throw error;
+    }
+  }
+
+  // Bilgi bankasında arama; sonuç kaynak metnin ilk 300 karakteriyle döner.
+  async searchKnowledge(query: string) {
+    const result = await this.knowledge.search(query);
+    return {
+      query,
+      threshold: result.threshold,
+      topScore: result.topScore,
+      items: result.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        source: item.source,
+        score: item.score,
+        excerpt: item.content.slice(0, EXCERPT_LENGTH),
+      })),
+    };
   }
 
   async listKnowledge(params: ListKnowledgeParams) {
@@ -194,10 +254,10 @@ export class KnowledgeAdminService {
     }
   }
 
-  private async markResolved(id: string) {
+  private async markStatus(id: string, status: UnansweredStatus) {
     const updated = await this.prisma.unansweredQuestion.update({
       where: { id },
-      data: { status: UnansweredStatus.RESOLVED },
+      data: { status },
     });
     this.inboxEvents.emit('counts.changed', {});
     return updated;

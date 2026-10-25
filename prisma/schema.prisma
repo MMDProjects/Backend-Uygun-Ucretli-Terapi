@@ -486,6 +486,7 @@ model Message {
   externalSource String?
   isDraft        Boolean      @default(false)
   draftMeta      Json?
+  retrieval      Json?
   createdAt      DateTime     @default(now())
 
   @@index([conversationId])
@@ -554,6 +555,7 @@ model Lead {
 enum UnansweredStatus {
   OPEN
   RESOLVED
+  DISMISSED
 }
 
 model UnansweredQuestion {
@@ -563,6 +565,9 @@ model UnansweredQuestion {
   question       String           @db.Text
   topScore       Float?
   status         UnansweredStatus @default(OPEN)
+  embedding      Float[]          @default([])
+  askCount       Int              @default(1)
+  lastAskedAt    DateTime         @default(now())
   createdAt      DateTime         @default(now())
 
   @@index([status, createdAt])

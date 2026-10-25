@@ -96,9 +96,11 @@ describe('PromptBuilder', () => {
   });
 
   describe('buildKnowledgeContext', () => {
-    it('boş liste için boş string döndürür', () => {
+    it('boş listede kayıt bulunamadı notunu döndürür', () => {
       const { builder } = build();
-      expect(builder.buildKnowledgeContext([])).toBe('');
+      const result = builder.buildKnowledgeContext([]);
+      expect(result).toContain('kayıt bulunamadı');
+      expect(result).toContain("'bilinmeyen_konu'");
     });
 
     it('bilgi maddelerini soru-cevap olarak bloğa çevirir', () => {
@@ -109,6 +111,29 @@ describe('PromptBuilder', () => {
 
       expect(result).toContain('Soru: Konum');
       expect(result).toContain('Cevap: Online platform');
+      expect(result).toContain('öncelikli kaynak');
+    });
+
+    it('içeriği zaten Soru: ile başlayan SSS kaydını ikinci kez etiketlemez', () => {
+      const { builder } = build();
+      const result = builder.buildKnowledgeContext([
+        {
+          title: 'Ücret nedir?',
+          content: 'Soru: Ücret nedir?\nCevap: 500 TL',
+        },
+      ]);
+
+      expect(result.match(/Soru:/g)).toHaveLength(1);
+      expect(result).not.toContain('Cevap: Soru:');
+    });
+
+    it('her kaydı en fazla 1200 karakter olarak verir', () => {
+      const { builder } = build();
+      const result = builder.buildKnowledgeContext([
+        { title: 'Uzun', content: 'a'.repeat(3000) },
+      ]);
+
+      expect(result.length).toBeLessThan(1400);
     });
   });
 

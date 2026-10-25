@@ -27,6 +27,8 @@ function buildPrismaMock() {
     conversation: {
       findUnique: jest.fn<any, any>().mockResolvedValue(CONVERSATION),
       update: jest.fn<any, any>().mockResolvedValue({}),
+      count: jest.fn<any, any>().mockResolvedValue(0),
+      findFirst: jest.fn<any, any>().mockResolvedValue(null),
     },
     contact: {
       update: jest.fn<any, any>().mockResolvedValue({}),
@@ -40,6 +42,12 @@ function buildPrismaMock() {
       findFirst: jest.fn<any, any>().mockResolvedValue(null),
       count: jest.fn<any, any>().mockResolvedValue(0),
       create: jest.fn<any, any>().mockResolvedValue({}),
+    },
+    lead: {
+      findFirst: jest.fn<any, any>().mockResolvedValue(null),
+    },
+    appointment: {
+      findFirst: jest.fn<any, any>().mockResolvedValue(null),
     },
   };
 }
@@ -61,6 +69,7 @@ function buildDeps(
   const prisma = buildPrismaMock();
   const settings: Record<string, string> = {
     ASSISTANT_DEBOUNCE_MS: '0',
+    ASSISTANT_QUERY_REWRITE: 'false',
     ...overrides,
   };
   const config = {
@@ -72,8 +81,17 @@ function buildDeps(
   const openai = { chat: jest.fn<any, any>() };
   const knowledge = {
     search: jest.fn<any, any>().mockResolvedValue({
-      items: [{ id: 'kb-1', title: 'Soru', content: 'Cevap', score: 0.9 }],
+      items: [
+        {
+          id: 'kb-1',
+          title: 'Soru',
+          content: 'Cevap',
+          source: 'SSS',
+          score: 0.9,
+        },
+      ],
       topScore: 0.9,
+      threshold: 0.4,
     }),
     recordUnanswered: jest.fn<any, any>().mockResolvedValue(undefined),
   };
@@ -249,6 +267,7 @@ describe('AssistantService', () => {
           senderType: 'BOT',
           content: 'Teşekkürler, sizi arayacağız.',
           metaMessageId: null,
+          retrieval: expect.objectContaining({ topScore: 0.9 }),
         },
       });
     });
@@ -622,6 +641,7 @@ describe('Instagram mesaj bölme', () => {
         senderType: 'BOT',
         content: 'A'.repeat(600),
         metaMessageId: 'ig-1',
+        retrieval: expect.objectContaining({ topScore: 0.9 }),
       },
     });
     expect(deps.prisma.message.create).toHaveBeenNthCalledWith(2, {
@@ -710,6 +730,7 @@ describe('gölge mod (SHADOW)', () => {
         content: 'Taslak cevap',
         isDraft: true,
         draftMeta: { mode: 'SHADOW', tools: [] },
+        retrieval: expect.objectContaining({ topScore: 0.9 }),
       },
     });
     expect(deps.prisma.conversation.update).not.toHaveBeenCalled();
@@ -1060,5 +1081,294 @@ describe('aydınlatma metni', () => {
       CRISIS_MESSAGE,
     ]);
     expect(deps.prisma.contact.update).not.toHaveBeenCalled();
+  });
+
+  describe('Paket C: bağlam, yeniden yazım ve önizleme', () => {
+    const RECENT_DATE = new Date('2026-10-20T11:05:00Z');
+
+    function sentMessages(deps: ReturnType<typeof buildDeps>, call = 0) {
+      return deps.openai.chat.mock.calls[call][0].messages as {
+        role: string;
+        content: string;
+      }[];
+    }
+
+    it('kişi bloğunu ana prompttan sonra ayrı sistem mesajı olarak ekler, telefonu eklemez', async () => {
+      const deps = buildDeps('LIVE');
+      deps.prisma.conversation.findUnique.mockResolvedValue({
+        ...CONVERSATION,
+        contact: {
+          ...CONVERSATION.contact,
+          fullName: 'Ayşe Yılmaz',
+          age: 31,
+          notes: 'Gizli klinik not',
+        },
+      });
+      deps.prisma.lead.findFirst.mockResolvedValueOnce({
+        serviceType: 'BIREYSEL',
+        status: 'YENI',
+        createdAt: RECENT_DATE,
+      });
+      deps.prisma.conversation.count.mockResolvedValueOnce(2);
+      deps.prisma.conversation.findFirst.mockResolvedValueOnce({
+        lastMessageAt: RECENT_DATE,
+      });
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      const messages = sentMessages(deps);
+      expect(messages[0].role).toBe('system');
+      expect(messages[1].role).toBe('system');
+      expect(messages[1].content).toContain('DANIŞAN BİLGİSİ');
+      expect(messages[1].content).toContain('Ayşe Yılmaz');
+      expect(messages[1].content).toContain('Bireysel terapi');
+      expect(messages[1].content).toContain('2 konuşma');
+      expect(messages[1].content).not.toContain('905550001122');
+      expect(messages[1].content).not.toContain('Gizli klinik not');
+    });
+
+    it('personel notunu yalnız bayrak açıkken ve en fazla 500 karakter gönderir', async () => {
+      const deps = buildDeps('LIVE', {
+        ASSISTANT_INCLUDE_CONTACT_NOTES: 'true',
+      });
+      deps.prisma.conversation.findUnique.mockResolvedValue({
+        ...CONVERSATION,
+        contact: { ...CONVERSATION.contact, notes: 'N'.repeat(800) },
+      });
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      const block = sentMessages(deps)[1].content;
+      expect(block).toContain(`Personel notu: ${'N'.repeat(500)}`);
+      expect(block).not.toContain('N'.repeat(501));
+    });
+
+    it('kişi bilgisi yoksa kişi bloğu eklenmez', async () => {
+      const deps = buildDeps('LIVE');
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      const systemMessages = sentMessages(deps).filter(
+        (message) => message.role === 'system',
+      );
+      expect(systemMessages).toHaveLength(1);
+    });
+
+    it('önceki turlar varsa arama sorgusu yeniden yazılır, kayıt orijinal metinle yapılır', async () => {
+      const deps = buildDeps('LIVE', { ASSISTANT_QUERY_REWRITE: 'true' });
+      deps.prisma.message.findMany.mockResolvedValue([
+        { senderType: 'CLIENT', content: 'Peki ya çift terapisi?' },
+        { senderType: 'BOT', content: 'Bireysel terapi 1000 TL.' },
+      ]);
+      deps.openai.chat
+        .mockResolvedValueOnce({
+          content: 'Çift terapisi ücreti',
+          toolCalls: [],
+        })
+        .mockResolvedValueOnce({ content: 'Cevap', toolCalls: [] });
+
+      await deps.service.handleIncoming('conv-1', 'Peki ya çift terapisi?');
+
+      expect(deps.knowledge.search).toHaveBeenCalledWith(
+        'Çift terapisi ücreti',
+      );
+      expect(deps.openai.chat.mock.calls[0][0]).toMatchObject({
+        maxTokens: 60,
+        temperature: 0,
+        timeoutMs: 10000,
+      });
+      expect(sentMessages(deps, 0)[0].content).toContain('bağımsız');
+    });
+
+    it('ilk mesajda yeniden yazım çağrısı yapılmaz', async () => {
+      const deps = buildDeps('LIVE', { ASSISTANT_QUERY_REWRITE: 'true' });
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      expect(deps.openai.chat).toHaveBeenCalledTimes(1);
+      expect(deps.knowledge.search).toHaveBeenCalledWith(
+        'Merhaba, randevu almak istiyorum',
+      );
+    });
+
+    it('yeniden yazım hata verirse birleşik metinle aranır', async () => {
+      const deps = buildDeps('LIVE', { ASSISTANT_QUERY_REWRITE: 'true' });
+      deps.prisma.message.findMany.mockResolvedValue([
+        { senderType: 'CLIENT', content: 'Peki ya çift terapisi?' },
+        { senderType: 'BOT', content: 'Cevap.' },
+      ]);
+      deps.openai.chat
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValueOnce({ content: 'Cevap', toolCalls: [] });
+
+      await deps.service.handleIncoming('conv-1', 'Peki ya çift terapisi?');
+
+      expect(deps.knowledge.search).toHaveBeenCalledWith(
+        expect.stringContaining('Peki ya çift terapisi?'),
+      );
+    });
+
+    it('ASSISTANT_QUERY_REWRITE=false iken yeniden yazım yapılmaz', async () => {
+      const deps = buildDeps('LIVE', { ASSISTANT_QUERY_REWRITE: 'false' });
+      deps.prisma.message.findMany.mockResolvedValue([
+        { senderType: 'CLIENT', content: 'Peki ya çift terapisi?' },
+        { senderType: 'BOT', content: 'Cevap.' },
+      ]);
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Peki ya çift terapisi?');
+
+      expect(deps.openai.chat).toHaveBeenCalledTimes(1);
+      expect(deps.knowledge.search).toHaveBeenCalledWith(
+        expect.stringContaining('Peki ya çift terapisi?'),
+      );
+    });
+
+    it('geçmişi karakter bütçesine göre en eskiden kırpar ve mesajı 1500 ile sınırlar', async () => {
+      const deps = buildDeps('LIVE', { ASSISTANT_HISTORY_MAX_CHARS: '3000' });
+      deps.prisma.message.findMany.mockResolvedValue([
+        { senderType: 'CLIENT', content: 'a'.repeat(2000) },
+        { senderType: 'BOT', content: 'b'.repeat(2000) },
+        { senderType: 'CLIENT', content: 'c'.repeat(2000) },
+      ]);
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'x');
+
+      const history = sentMessages(deps).slice(1);
+      expect(history).toHaveLength(2);
+      expect(history[0].content).toBe('b'.repeat(1500));
+      expect(history[1].content.startsWith('a'.repeat(1500))).toBe(true);
+    });
+
+    it('chat çağrısı max_tokens ve temperature ayarlarını taşır', async () => {
+      const deps = buildDeps('LIVE', {
+        ASSISTANT_MAX_TOKENS: '250',
+        ASSISTANT_TEMPERATURE: '0.2',
+      });
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      expect(deps.openai.chat).toHaveBeenCalledWith(
+        expect.objectContaining({ maxTokens: 250, temperature: 0.2 }),
+      );
+    });
+
+    it('geçersiz ayar değerlerinde varsayılanlar kullanılır', async () => {
+      const deps = buildDeps('LIVE', {
+        ASSISTANT_MAX_TOKENS: 'abc',
+        ASSISTANT_TEMPERATURE: '9',
+      });
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      expect(deps.openai.chat).toHaveBeenCalledWith(
+        expect.objectContaining({ maxTokens: 600, temperature: 0.4 }),
+      );
+    });
+
+    it('bot cevabı kaydına hangi bilgiyle üretildiği (retrieval) yazılır', async () => {
+      const deps = buildDeps('LIVE');
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      expect(deps.prisma.message.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          senderType: 'BOT',
+          retrieval: {
+            query: 'Merhaba, randevu almak istiyorum',
+            topScore: 0.9,
+            threshold: 0.4,
+            items: [{ id: 'kb-1', title: 'Soru', source: 'SSS', score: 0.9 }],
+          },
+        }),
+      });
+    });
+
+    it('previewReply kayıt, gönderim ve araç çalıştırma olmadan cevap ve araçları döner', async () => {
+      const deps = buildDeps('OFF');
+      deps.openai.chat
+        .mockResolvedValueOnce({
+          content: null,
+          toolCalls: [
+            {
+              id: 'c1',
+              name: 'lead_tool',
+              arguments: JSON.stringify({
+                hizmet: 'bireysel',
+                ad_soyad: 'Test',
+                arama_saati: '14:00',
+                ozet: 'Özet',
+              }),
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ content: 'Önizleme cevabı', toolCalls: [] });
+
+      const result = await deps.service.previewReply('Randevu almak istiyorum');
+
+      expect(result.reply).toBe('Önizleme cevabı');
+      expect(result.tools).toEqual([
+        {
+          name: 'lead_tool',
+          args: expect.objectContaining({ hizmet: 'bireysel' }),
+        },
+      ]);
+      expect(result.retrieval).toEqual({
+        query: 'Randevu almak istiyorum',
+        topScore: 0.9,
+        threshold: 0.4,
+        items: [{ id: 'kb-1', title: 'Soru', source: 'SSS', score: 0.9 }],
+      });
+      expect(deps.leads.createFromTool).not.toHaveBeenCalled();
+      expect(deps.prisma.message.create).not.toHaveBeenCalled();
+      expect(deps.prisma.conversation.update).not.toHaveBeenCalled();
+      expect(deps.metaSender.sendText).not.toHaveBeenCalled();
+      expect(deps.knowledge.recordUnanswered).not.toHaveBeenCalled();
+      expect(deps.handoffService.handoff).not.toHaveBeenCalled();
+    });
+
+    it('previewReply OpenAI yoksa OpenAiUnavailableError fırlatır', async () => {
+      const deps = buildDeps('LIVE');
+      deps.openai.chat.mockRejectedValueOnce(new OpenAiUnavailableError());
+
+      await expect(deps.service.previewReply('Merhaba')).rejects.toBeInstanceOf(
+        OpenAiUnavailableError,
+      );
+    });
   });
 });

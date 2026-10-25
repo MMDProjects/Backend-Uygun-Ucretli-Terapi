@@ -15,6 +15,12 @@ export interface KnowledgeContextItem {
 const TR_LOCALE = 'tr-TR';
 const ISTANBUL_TZ = 'Europe/Istanbul';
 const PRICE_PLACEHOLDER = '{{FIYAT_TABLOSU}}';
+const QUESTION_PREFIX = 'Soru:';
+const KNOWLEDGE_ITEM_MAX_CHARS = 1200;
+const KNOWLEDGE_HEADER =
+  '[BİLGİ BANKASI — ilgili kayıtlar; öncelikli kaynak. Prompttaki kurallar her zaman geçerli.]';
+const NO_KNOWLEDGE_NOTE =
+  "[BİLGİ BANKASI — bu konuda kayıt bulunamadı. Cevap yukarıdaki sistem bilgilerinde yoksa tahmin etme; personel_aktar_tool ile 'bilinmeyen_konu' sebebiyle devret.]";
 
 @Injectable()
 export class PromptBuilder {
@@ -49,12 +55,18 @@ export class PromptBuilder {
 
   buildKnowledgeContext(items: KnowledgeContextItem[]): string {
     if (items.length === 0) {
-      return '';
+      return NO_KNOWLEDGE_NOTE;
     }
     const body = items
-      .map((item) => `Soru: ${item.title}\nCevap: ${item.content}`)
+      .map((item) => {
+        // SSS kayıtları zaten "Soru:/Cevap:" biçiminde; ikinci kez etiketlenmez.
+        const text = item.content.startsWith(QUESTION_PREFIX)
+          ? item.content
+          : `${QUESTION_PREFIX} ${item.title}\nCevap: ${item.content}`;
+        return text.slice(0, KNOWLEDGE_ITEM_MAX_CHARS);
+      })
       .join('\n\n');
-    return `[BİLGİ BANKASI — yalnızca aşağıdaki bilgilere dayanarak cevap ver]\n${body}`;
+    return `${KNOWLEDGE_HEADER}\n${body}`;
   }
 
   buildChannelTag(channel: Channel, phone?: string | null): string {

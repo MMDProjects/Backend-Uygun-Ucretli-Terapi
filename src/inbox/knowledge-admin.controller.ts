@@ -13,6 +13,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { KnowledgeAdminService } from './knowledge-admin.service';
 import { CreateKnowledgeDto } from './dto/create-knowledge.dto';
 import { UpdateKnowledgeDto } from './dto/update-knowledge.dto';
+import { SearchKnowledgeDto } from './dto/search-knowledge.dto';
 
 @Roles('ADMIN')
 @Controller('admin/knowledge')
@@ -32,6 +33,21 @@ export class KnowledgeAdminController {
       page: Number(page),
       limit: Number(limit),
     });
+  }
+
+  @Get('stats')
+  stats() {
+    return this.knowledge.knowledgeStats();
+  }
+
+  @Post('reindex-missing')
+  reindexMissing() {
+    return this.knowledge.reindexMissing();
+  }
+
+  @Post('search')
+  search(@Body() dto: SearchKnowledgeDto) {
+    return this.knowledge.searchKnowledge(dto.query);
   }
 
   @Post()

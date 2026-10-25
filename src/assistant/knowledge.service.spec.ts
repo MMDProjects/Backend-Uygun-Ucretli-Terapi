@@ -1,5 +1,10 @@
+import { KnowledgeSource, UnansweredStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { KnowledgeService, cosineSimilarity } from './knowledge.service';
+import {
+  KnowledgeService,
+  cosineSimilarity,
+  isSmallTalk,
+} from './knowledge.service';
 import { OpenAiClient, OpenAiUnavailableError } from './openai.client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
@@ -15,6 +20,8 @@ function buildPrismaMock() {
       update: jest.fn<any, any>(),
       delete: jest.fn<any, any>(),
       deleteMany: jest.fn<any, any>(),
+      updateMany: jest.fn<any, any>(),
+      count: jest.fn<any, any>(),
     },
     sss: {
       findUnique: jest.fn<any, any>(),
@@ -22,6 +29,8 @@ function buildPrismaMock() {
     },
     unansweredQuestion: {
       create: jest.fn<any, any>(),
+      findMany: jest.fn<any, any>().mockResolvedValue([]),
+      update: jest.fn<any, any>(),
     },
   };
 }
@@ -131,7 +140,7 @@ describe('KnowledgeService', () => {
 
       const result = await build('0.4').search('soru');
 
-      expect(result).toEqual({ items: [], topScore: 0 });
+      expect(result).toEqual({ items: [], topScore: 0, threshold: 0.4 });
     });
 
     it('bilgi bankası boşsa items boş ve topScore null döner', async () => {
@@ -140,7 +149,32 @@ describe('KnowledgeService', () => {
 
       const result = await build().search('soru');
 
-      expect(result).toEqual({ items: [], topScore: null });
+      expect(result).toEqual({ items: [], topScore: null, threshold: 0.4 });
+    });
+
+    it('her öğede id, title, source ve score bulunur', async () => {
+      openai.embed.mockResolvedValue([[1, 0]]);
+      prisma.knowledgeBase.findMany.mockResolvedValue([
+        {
+          id: 'a',
+          title: 'Başlık',
+          content: 'İçerik',
+          source: 'MANUAL',
+          embedding: [1, 0],
+        },
+      ]);
+
+      const result = await build('0.4').search('soru');
+
+      expect(result.items).toEqual([
+        {
+          id: 'a',
+          title: 'Başlık',
+          content: 'İçerik',
+          source: 'MANUAL',
+          score: expect.any(Number),
+        },
+      ]);
     });
 
     it('yalnızca aktif kayıtları sorgular', async () => {
@@ -159,8 +193,96 @@ describe('KnowledgeService', () => {
 
       const result = await build().search('soru');
 
-      expect(result).toEqual({ items: [], topScore: null });
+      expect(result).toEqual({ items: [], topScore: null, threshold: 0.4 });
       expect(prisma.knowledgeBase.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('embedMany', () => {
+    it('metinleri 50 gruplu OpenAI çağrısına böler ve sırayı korur', async () => {
+      openai.embed.mockImplementation((batch: string[]) =>
+        Promise.resolve(batch.map((t) => [Number(t)])),
+      );
+      const texts = Array.from({ length: 120 }, (_, i) => String(i));
+
+      const vectors = await build().embedMany(texts);
+
+      expect(openai.embed).toHaveBeenCalledTimes(3);
+      expect(openai.embed.mock.calls[0][0]).toHaveLength(50);
+      expect(openai.embed.mock.calls[2][0]).toHaveLength(20);
+      expect(vectors).toHaveLength(120);
+      expect(vectors[119]).toEqual([119]);
+    });
+
+    it('boş dizide OpenAI çağrısı yapmaz', async () => {
+      expect(await build().embedMany([])).toEqual([]);
+      expect(openai.embed).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reindexMissing', () => {
+    it('embedding boş kayıtları toplu indeksler ve sayıları döner', async () => {
+      prisma.knowledgeBase.findMany.mockResolvedValue([
+        {
+          id: 'm1',
+          title: 'Başlık',
+          content: 'İçerik',
+          source: 'MANUAL',
+        },
+        {
+          id: 's1',
+          title: 'Soru',
+          content: 'Soru: Soru\nCevap: Cevap',
+          source: 'SSS',
+        },
+      ]);
+      openai.embed.mockResolvedValue([[0.1], [0.2]]);
+      prisma.knowledgeBase.count.mockResolvedValue(0);
+
+      const result = await build().reindexMissing();
+
+      expect(prisma.knowledgeBase.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { embedding: { isEmpty: true } },
+        }),
+      );
+      expect(openai.embed).toHaveBeenCalledWith([
+        'Başlık\nİçerik',
+        'Soru: Soru\nCevap: Cevap',
+      ]);
+      expect(prisma.knowledgeBase.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: { embedding: [0.1] },
+      });
+      expect(prisma.knowledgeBase.update).toHaveBeenCalledWith({
+        where: { id: 's1' },
+        data: { embedding: [0.2] },
+      });
+      expect(result).toEqual({ processed: 2, failed: 0, remaining: 0 });
+    });
+
+    it('OpenAI yoksa OpenAiUnavailableError fırlatır', async () => {
+      prisma.knowledgeBase.findMany.mockResolvedValue([
+        { id: 'm1', title: 't', content: 'c', source: 'MANUAL' },
+      ]);
+      openai.embed.mockRejectedValue(new OpenAiUnavailableError());
+
+      await expect(build().reindexMissing()).rejects.toBeInstanceOf(
+        OpenAiUnavailableError,
+      );
+      expect(prisma.knowledgeBase.update).not.toHaveBeenCalled();
+    });
+
+    it('hata veren grubu failed sayar ve devam eder', async () => {
+      prisma.knowledgeBase.findMany.mockResolvedValue([
+        { id: 'm1', title: 't', content: 'c', source: 'MANUAL' },
+      ]);
+      openai.embed.mockRejectedValue(new Error('ağ hatası'));
+      prisma.knowledgeBase.count.mockResolvedValue(1);
+
+      const result = await build().reindexMissing();
+
+      expect(result).toEqual({ processed: 0, failed: 1, remaining: 1 });
     });
   });
 
@@ -276,31 +398,173 @@ describe('KnowledgeService', () => {
     });
   });
 
+  describe('isSmallTalk', () => {
+    it.each([
+      ['Merhaba', true],
+      ['selam!', true],
+      ['Teşekkürler 🙏', true],
+      ['tamam.', true],
+      ['İyi günler', true],
+      ['görüşürüz', true],
+      ['Teşekkür ederim', true],
+      ['merhaba, bu fiyat ne kadar?', false],
+      ['tamam peki seans ücreti kaç', false],
+      ['', false],
+      ['!!!', false],
+    ])('%s → %s', (text, expected) => {
+      expect(isSmallTalk(text)).toBe(expected);
+    });
+  });
+
   describe('recordUnanswered', () => {
-    it('cevaplanamayan soruyu konuşmaya bağlı olarak kaydeder', async () => {
-      await build().recordUnanswered('conv-1', 'Bilinmeyen soru', null);
+    const question = 'Seans ücreti ne kadar acaba?';
+
+    it('yeni soruyu embedding ile kaydeder', async () => {
+      openai.embed.mockResolvedValue([[1, 0]]);
+      prisma.unansweredQuestion.findMany.mockResolvedValue([]);
+
+      await build().recordUnanswered('conv-1', question, 0.31);
 
       expect(prisma.unansweredQuestion.create).toHaveBeenCalledWith({
         data: {
           conversationId: 'conv-1',
-          question: 'Bilinmeyen soru',
-          topScore: null,
+          question,
+          topScore: 0.31,
+          embedding: [1, 0],
         },
+      });
+      expect(prisma.unansweredQuestion.update).not.toHaveBeenCalled();
+    });
+
+    it('benzerlik 0.9 ise yeni kayıt açmaz, askCount artırır', async () => {
+      openai.embed.mockResolvedValue([[1, 0]]);
+      prisma.unansweredQuestion.findMany.mockResolvedValue([
+        { id: 'q-1', topScore: 0.2, embedding: [0.9, 0.436] },
+      ]);
+
+      await build().recordUnanswered('conv-1', question, 0.5);
+
+      expect(prisma.unansweredQuestion.create).not.toHaveBeenCalled();
+      expect(prisma.unansweredQuestion.update).toHaveBeenCalledWith({
+        where: { id: 'q-1' },
+        data: expect.objectContaining({
+          askCount: { increment: 1 },
+          lastAskedAt: expect.any(Date),
+          question,
+          topScore: 0.5,
+        }),
       });
     });
 
-    it('verilen topScore değerini kaydeder', async () => {
-      await build().recordUnanswered('conv-1', 'Soru', 0.31);
+    it('benzerlik 0.5 ise yeni kayıt açar', async () => {
+      openai.embed.mockResolvedValue([[1, 0]]);
+      prisma.unansweredQuestion.findMany.mockResolvedValue([
+        { id: 'q-1', topScore: 0.2, embedding: [0.5, 0.866] },
+      ]);
 
+      await build().recordUnanswered('conv-1', question, 0.5);
+
+      expect(prisma.unansweredQuestion.update).not.toHaveBeenCalled();
+      expect(prisma.unansweredQuestion.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('gruplama yalnızca OPEN sorulara bakar', async () => {
+      openai.embed.mockResolvedValue([[1, 0]]);
+
+      await build().recordUnanswered('conv-1', question, 0.5);
+
+      expect(prisma.unansweredQuestion.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: UnansweredStatus.OPEN },
+        }),
+      );
+    });
+
+    it('embedding alınamazsa gruplamadan yeni kayıt açar', async () => {
+      openai.embed.mockRejectedValue(new OpenAiUnavailableError());
+
+      await build().recordUnanswered('conv-1', question, 0.5);
+
+      expect(prisma.unansweredQuestion.findMany).not.toHaveBeenCalled();
       expect(prisma.unansweredQuestion.create).toHaveBeenCalledWith({
-        data: { conversationId: 'conv-1', question: 'Soru', topScore: 0.31 },
+        data: expect.objectContaining({ embedding: [] }),
       });
+    });
+
+    it.each([
+      ['8 karakterden kısa metin', 'kısa', 0.5],
+      ['selamlaşma', 'Teşekkürler 🙏', 0.5],
+      ['onay ifadesi', 'İyi günler', 0.5],
+      ['desteklenmeyen mesaj tipi', '[desteklenmeyen mesaj tipi: image]', 0.5],
+      ['puanı hesaplanamayan arama', question, null],
+    ])('%s kaydedilmez', async (_label, text, topScore) => {
+      await build().recordUnanswered('conv-1', text, topScore);
+
+      expect(openai.embed).not.toHaveBeenCalled();
+      expect(prisma.unansweredQuestion.create).not.toHaveBeenCalled();
+      expect(prisma.unansweredQuestion.update).not.toHaveBeenCalled();
+      expect(inboxEvents.emit).not.toHaveBeenCalled();
     });
 
     it('kaydettikten sonra inbox’a counts.changed yayınlar', async () => {
-      await build().recordUnanswered('conv-1', 'Soru', null);
+      openai.embed.mockResolvedValue([[1, 0]]);
+
+      await build().recordUnanswered('conv-1', question, 0.5);
 
       expect(inboxEvents.emit).toHaveBeenCalledWith('counts.changed', {});
+    });
+  });
+
+  describe('UZMAN SSS sayfası', () => {
+    it('syncSss UZMAN sayfasını bilgi bankasına aktarmaz, mevcut kaydı pasifleştirir', async () => {
+      prisma.sss.findUnique.mockResolvedValue({
+        id: 'sss-u',
+        question: 'Uzman ücreti?',
+        answer: 'Uzmanlara özel.',
+        page: 'UZMAN',
+        isActive: true,
+        order: 0,
+      });
+
+      await build().syncSss('sss-u');
+
+      expect(openai.embed).not.toHaveBeenCalled();
+      expect(prisma.knowledgeBase.create).not.toHaveBeenCalled();
+      expect(prisma.knowledgeBase.updateMany).toHaveBeenCalledWith({
+        where: { source: KnowledgeSource.SSS, sourceRefId: 'sss-u' },
+        data: { isActive: false },
+      });
+      expect(prisma.knowledgeBase.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('reindexAllSss UZMAN kayıtlarını atlar ve pasifleştirir', async () => {
+      prisma.sss.findMany.mockResolvedValue([
+        {
+          id: 'g',
+          question: 'q1',
+          answer: 'a1',
+          page: 'GENEL',
+          isActive: true,
+        },
+        {
+          id: 'u',
+          question: 'q2',
+          answer: 'a2',
+          page: 'UZMAN',
+          isActive: true,
+        },
+      ]);
+      openai.embed.mockResolvedValue([[1, 0]]);
+      prisma.knowledgeBase.findFirst.mockResolvedValue(null);
+
+      const result = await build().reindexAllSss();
+
+      expect(result).toEqual({ indexed: 1, skipped: 1 });
+      expect(openai.embed).toHaveBeenCalledWith(['Soru: q1\nCevap: a1']);
+      expect(prisma.knowledgeBase.updateMany).toHaveBeenCalledWith({
+        where: { source: KnowledgeSource.SSS, sourceRefId: 'u' },
+        data: { isActive: false },
+      });
     });
   });
 
