@@ -558,6 +558,66 @@ describe('Operatör özellikleri (e2e)', () => {
       );
     });
 
+    it('POST ek 5000 karakteri asarsa 400 doner ve kayit yapilmaz', async () => {
+      await request(app.getHttpServer())
+        .post('/admin/assistant/prompts')
+        .set('Authorization', admin())
+        .send({
+          content: VALID_PROMPT,
+          whatsappAddendum: 'a'.repeat(5001),
+        })
+        .expect(400);
+
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('POST /test ek 5001 karakter ise 400 doner ve OpenAI cagrilmaz', async () => {
+      await request(app.getHttpServer())
+        .post('/admin/assistant/prompts/test')
+        .set('Authorization', admin())
+        .send({
+          content: VALID_PROMPT,
+          instagramAddendum: 'a'.repeat(5001),
+          message: 'Merhaba',
+        })
+        .expect(400);
+
+      expect(assistantMock.previewReply).not.toHaveBeenCalled();
+    });
+
+    it('POST /test gecersiz kanal ise 400 doner', async () => {
+      await request(app.getHttpServer())
+        .post('/admin/assistant/prompts/test')
+        .set('Authorization', admin())
+        .send({ content: VALID_PROMPT, message: 'Merhaba', channel: 'WEB' })
+        .expect(400);
+
+      expect(assistantMock.previewReply).not.toHaveBeenCalled();
+    });
+
+    it('POST /test channel INSTAGRAM ise o kanal ve ekler onizlemeye iletilir', async () => {
+      await request(app.getHttpServer())
+        .post('/admin/assistant/prompts/test')
+        .set('Authorization', admin())
+        .send({
+          content: VALID_PROMPT,
+          whatsappAddendum: 'WA',
+          instagramAddendum: 'IG',
+          message: 'Merhaba',
+          channel: 'INSTAGRAM',
+        })
+        .expect(201);
+
+      expect(assistantMock.previewReply).toHaveBeenCalledWith(
+        'Merhaba',
+        expect.objectContaining({
+          promptOverride: VALID_PROMPT,
+          addendaOverride: { whatsappAddendum: 'WA', instagramAddendum: 'IG' },
+          channel: 'INSTAGRAM',
+        }),
+      );
+    });
+
     it('POST /:id/activate var olmayan sürüm icin 404 doner', async () => {
       prismaMock.assistantPrompt.findUnique.mockResolvedValue(null);
 

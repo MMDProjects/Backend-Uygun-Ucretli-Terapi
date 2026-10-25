@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { Channel } from '@prisma/client';
 import { AssistantService } from './assistant.service';
 import { OpenAiUnavailableError } from './openai.client';
 import { PromptVersionsController } from './prompt-versions.controller';
@@ -35,8 +36,31 @@ describe('PromptVersionsController test uç noktası', () => {
 
     expect(assistant.previewReply).toHaveBeenCalledWith('Merhaba', {
       promptOverride: VALID_CONTENT,
+      addendaOverride: {
+        whatsappAddendum: undefined,
+        instagramAddendum: undefined,
+      },
+      channel: Channel.WHATSAPP,
     });
     expect(result.reply).toBe('Önizleme');
+  });
+
+  it('kanal INSTAGRAM seçilirse ve ekler verilirse önizlemeye iletilir', async () => {
+    const { controller, assistant } = build();
+
+    await controller.test({
+      content: VALID_CONTENT,
+      message: 'Merhaba',
+      whatsappAddendum: 'WA',
+      instagramAddendum: 'IG',
+      channel: 'INSTAGRAM',
+    });
+
+    expect(assistant.previewReply).toHaveBeenCalledWith('Merhaba', {
+      promptOverride: VALID_CONTENT,
+      addendaOverride: { whatsappAddendum: 'WA', instagramAddendum: 'IG' },
+      channel: Channel.INSTAGRAM,
+    });
   });
 
   it('geçersiz içerikte 400 döner ve önizleme çalışmaz', async () => {

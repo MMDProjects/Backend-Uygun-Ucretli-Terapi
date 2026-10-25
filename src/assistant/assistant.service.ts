@@ -29,7 +29,11 @@ import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { CRISIS_MESSAGE } from './crisis-message';
 import { AssistantSettingsService } from './assistant-settings.service';
 import { CrisisAlertService } from './crisis-alert.service';
-import { PromptVersionsService } from './prompt-versions.service';
+import {
+  ActivePrompt,
+  PromptAddenda,
+  PromptVersionsService,
+} from './prompt-versions.service';
 
 const MAX_TOOL_TURNS = 3;
 const DEFAULT_HISTORY_LIMIT = 20;
@@ -72,6 +76,13 @@ export type RetrievalRecord = {
   threshold: number;
   items: { id: string; title: string; source: string; score: number }[];
 };
+// Panel önizlemesi: override verilirse aktif sürüm yerine kullanılır.
+export interface PreviewOptions {
+  promptOverride?: string;
+  addendaOverride?: Partial<PromptAddenda>;
+  channel?: Channel;
+}
+
 export interface AssistantPreview {
   reply: string | null;
   tools: { name: string; args: Record<string, unknown> }[];
@@ -375,6 +386,8 @@ export class AssistantService {
         latestText,
         tags,
         contactBlock: await this.safeContactContext(conversation),
+        prompt: await this.promptVersions.getActivePrompt(),
+        channel: conversation.channel,
       });
       const retrieval = toRetrieval(query, search);
 
@@ -550,25 +563,32 @@ export class AssistantService {
     return { query, search };
   }
 
-  // Modele giden mesajlar: ana prompt (+ bilgi bloğu), kişi bloğu, geçmiş, son mesaj.
+  // Modele giden mesajlar: ana prompt, kanal eki, bilgi bloğu; sonra kişi bloğu, geçmiş, son mesaj.
   private async buildMessages(input: {
     search: KnowledgeSearchResult;
     history: OpenAiMessage[];
     latestText: string;
     tags: string;
     contactBlock: string | null;
-    promptOverride?: string;
+    prompt: ActivePrompt;
+    channel: Channel;
   }): Promise<OpenAiMessage[]> {
     const priceTable = await this.promptBuilder.buildPriceTable();
-    const template =
-      input.promptOverride ?? (await this.promptVersions.getActiveContent());
     const knowledgeBlock = this.promptBuilder.buildKnowledgeContext(
       input.search.items,
+    );
+    const mainText = this.promptBuilder.buildSystemPrompt(
+      priceTable,
+      input.prompt.content,
+    );
+    const channelAddendum = this.promptBuilder.buildChannelAddendum(
+      input.channel,
+      input.prompt,
     );
     const messages: OpenAiMessage[] = [
       {
         role: 'system',
-        content: `${this.promptBuilder.buildSystemPrompt(priceTable, template)}\n\n${knowledgeBlock}`,
+        content: `${mainText}${channelAddendum}\n\n${knowledgeBlock}`,
       },
     ];
     if (input.contactBlock) {
@@ -601,9 +621,10 @@ export class AssistantService {
 
   // "Elif'e sor" önizlemesi: kayıt, gönderim ve araç çalıştırma yok; geçmiş ve kişi bilgisi yok.
   // promptOverride verilirse aktif prompt yerine o metin kullanılır (panel "Dene").
+  // channel verilmezse WhatsApp gibi cevaplanır.
   async previewReply(
     message: string,
-    opts?: { promptOverride?: string },
+    opts?: PreviewOptions,
   ): Promise<AssistantPreview> {
     const { query, search } = await this.searchKnowledge(message, []);
     const messages = await this.buildMessages({
@@ -612,7 +633,8 @@ export class AssistantService {
       latestText: message,
       tags: this.promptBuilder.buildNowTag(new Date()),
       contactBlock: null,
-      promptOverride: opts?.promptOverride,
+      prompt: await this.resolvePreviewPrompt(opts),
+      channel: opts?.channel ?? Channel.WHATSAPP,
     });
     const { text, calls } = await this.runToolLoop(null, messages, {
       shadow: true,
@@ -625,6 +647,29 @@ export class AssistantService {
         args: call.args,
       })),
       retrieval: toRetrieval(query, search),
+    };
+  }
+
+  // Önizleme metni: override yoksa aktif sürüm; ek override'ı varsa onu kullanır.
+  private async resolvePreviewPrompt(
+    opts?: PreviewOptions,
+  ): Promise<ActivePrompt> {
+    const base: ActivePrompt =
+      opts?.promptOverride !== undefined
+        ? {
+            content: opts.promptOverride,
+            whatsappAddendum: null,
+            instagramAddendum: null,
+          }
+        : await this.promptVersions.getActivePrompt();
+    const addenda = opts?.addendaOverride;
+    if (!addenda) {
+      return base;
+    }
+    return {
+      ...base,
+      whatsappAddendum: addenda.whatsappAddendum ?? null,
+      instagramAddendum: addenda.instagramAddendum ?? null,
     };
   }
 

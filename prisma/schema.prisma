@@ -697,14 +697,17 @@ model CannedResponse {
 }
 
 model AssistantPrompt {
-  id          String   @id @default(uuid())
-  version     Int      @unique
-  content     String   @db.Text
-  note        String?  @db.VarChar(200)
-  isActive    Boolean  @default(false)
-  createdById String?
-  createdBy   User?    @relation("AssistantPromptCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
+  id                String   @id @default(uuid())
+  version           Int      @unique
+  content           String   @db.Text
+  // Kanala özel ekler: yalnızca ilgili kanaldaki konuşmalarda ana prompta eklenir.
+  whatsappAddendum  String?  @db.Text
+  instagramAddendum String?  @db.Text
+  note              String?  @db.VarChar(200)
+  isActive          Boolean  @default(false)
+  createdById       String?
+  createdBy         User?    @relation("AssistantPromptCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now())
 
   @@map("assistant_prompts")
 }

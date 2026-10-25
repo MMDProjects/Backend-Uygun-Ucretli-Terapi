@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Channel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import type { PromptAddenda } from './prompt-versions.service';
 import {
   ELIF_SYSTEM_PROMPT,
   PROMPT_PRICE_TABLE,
@@ -35,6 +36,21 @@ export class PromptBuilder {
     template: string = ELIF_SYSTEM_PROMPT,
   ): string {
     return template.replace(PRICE_PLACEHOLDER, () => priceTable);
+  }
+
+  // Kanala özel ek: yalnızca o kanalın konuşmasında, boş değilse. Boşsa başlık da eklenmez.
+  buildChannelAddendum(channel: Channel, addenda: PromptAddenda): string {
+    const target =
+      channel === Channel.WHATSAPP
+        ? { label: 'WhatsApp', text: addenda.whatsappAddendum }
+        : channel === Channel.INSTAGRAM
+          ? { label: 'Instagram', text: addenda.instagramAddendum }
+          : null;
+    const text = target?.text?.trim();
+    if (!target || !text) {
+      return '';
+    }
+    return `\n\n[KANALA ÖZEL TALİMATLAR — ${target.label}]\n${text}`;
   }
 
   async buildPriceTable(): Promise<string> {

@@ -74,6 +74,8 @@ describe('PromptVersionsService', () => {
       expect(await service.getActive()).toEqual({
         source: 'code',
         content: ELIF_SYSTEM_PROMPT,
+        whatsappAddendum: null,
+        instagramAddendum: null,
       });
     });
 
@@ -82,10 +84,37 @@ describe('PromptVersionsService', () => {
         id: 'p1',
         version: 3,
         content: VALID_CONTENT,
+        whatsappAddendum: 'WA eki',
+        instagramAddendum: 'IG eki',
       });
 
       expect(await service.getActiveContent()).toBe(VALID_CONTENT);
       expect(await service.getActiveContent()).toBe(VALID_CONTENT);
+      expect(prisma.assistantPrompt.findFirst).toHaveBeenCalledTimes(1);
+    });
+
+    it('aktif DB sürümünün ekleri getActive ve getActivePrompt çıktısında taşınır ve önbellekten gelir', async () => {
+      prisma.assistantPrompt.findFirst.mockResolvedValue({
+        id: 'p1',
+        version: 3,
+        content: VALID_CONTENT,
+        whatsappAddendum: 'WA eki',
+        instagramAddendum: null,
+      });
+
+      expect(await service.getActive()).toEqual({
+        source: 'db',
+        id: 'p1',
+        version: 3,
+        content: VALID_CONTENT,
+        whatsappAddendum: 'WA eki',
+        instagramAddendum: null,
+      });
+      expect(await service.getActivePrompt()).toEqual({
+        content: VALID_CONTENT,
+        whatsappAddendum: 'WA eki',
+        instagramAddendum: null,
+      });
       expect(prisma.assistantPrompt.findFirst).toHaveBeenCalledTimes(1);
     });
 
@@ -203,6 +232,126 @@ describe('PromptVersionsService', () => {
         where: { isActive: true },
         data: { isActive: false },
       });
+    });
+  });
+
+  describe('kanal ekleri', () => {
+    const ADDENDUM = 'Kanal kuralı metni';
+
+    it('aktif DB sürümünün iki ekini döner ve getActivePrompt üçlüyü verir', async () => {
+      prisma.assistantPrompt.findFirst.mockResolvedValue({
+        id: 'p1',
+        version: 2,
+        content: VALID_CONTENT,
+        whatsappAddendum: ADDENDUM,
+        instagramAddendum: null,
+      });
+
+      expect(await service.getActivePrompt()).toEqual({
+        content: VALID_CONTENT,
+        whatsappAddendum: ADDENDUM,
+        instagramAddendum: null,
+      });
+      expect(prisma.assistantPrompt.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            whatsappAddendum: true,
+            instagramAddendum: true,
+          }),
+        }),
+      );
+    });
+
+    it('create ekleri kaydeder; boş ek null olarak saklanır', async () => {
+      await service.create(
+        {
+          content: VALID_CONTENT,
+          whatsappAddendum: ADDENDUM,
+          instagramAddendum: '   ',
+        },
+        'u1',
+      );
+
+      expect(prisma.assistantPrompt.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            whatsappAddendum: ADDENDUM,
+            instagramAddendum: null,
+          }),
+        }),
+      );
+    });
+
+    it('create ek vermezse iki ek de null kaydedilir', async () => {
+      await service.create({ content: VALID_CONTENT }, 'u1');
+
+      expect(prisma.assistantPrompt.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            whatsappAddendum: null,
+            instagramAddendum: null,
+          }),
+        }),
+      );
+    });
+
+    it('5000 karakterden uzun ek 400 ile reddedilir ve kayıt yapılmaz', async () => {
+      await expect(
+        service.create(
+          {
+            content: VALID_CONTENT,
+            instagramAddendum: 'a'.repeat(5001),
+          },
+          'u1',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.assistantPrompt.create).not.toHaveBeenCalled();
+    });
+
+    it('5000 karakterlik ek kabul edilir', () => {
+      expect(() =>
+        service.validateAddenda({ whatsappAddendum: 'a'.repeat(5000) }),
+      ).not.toThrow();
+    });
+
+    it('findOne ekleri içerikle birlikte döner', async () => {
+      prisma.assistantPrompt.findUnique.mockResolvedValue({
+        id: 'p1',
+        version: 1,
+        content: VALID_CONTENT,
+        whatsappAddendum: ADDENDUM,
+        instagramAddendum: null,
+      });
+
+      expect(await service.findOne('p1')).toEqual(
+        expect.objectContaining({
+          whatsappAddendum: ADDENDUM,
+          instagramAddendum: null,
+        }),
+      );
+    });
+
+    it('list ek metinlerini taşımadan dolu olup olmadığını döner', async () => {
+      prisma.assistantPrompt.findMany.mockResolvedValue([
+        {
+          id: 'p2',
+          version: 2,
+          isActive: true,
+          whatsappAddendum: ADDENDUM,
+          instagramAddendum: null,
+        },
+      ]);
+
+      const result = await service.list();
+
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          hasWhatsappAddendum: true,
+          hasInstagramAddendum: false,
+        }),
+      );
+      expect(result.items[0]).not.toHaveProperty('whatsappAddendum');
+      expect(result.items[0]).not.toHaveProperty('instagramAddendum');
     });
   });
 

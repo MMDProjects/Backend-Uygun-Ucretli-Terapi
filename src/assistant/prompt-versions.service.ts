@@ -7,18 +7,31 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { PROMPT_MAX_CHARS, PROMPT_MIN_CHARS } from './dto/prompt-version.dto';
+import {
+  PROMPT_ADDENDUM_MAX_CHARS,
+  PROMPT_MAX_CHARS,
+  PROMPT_MIN_CHARS,
+} from './dto/prompt-version.dto';
 import { ELIF_SYSTEM_PROMPT } from './prompts/elif-system-prompt';
 
 const PRICE_PLACEHOLDER = '{{FIYAT_TABLOSU}}';
 const CACHE_TTL_MS = 30_000;
 const P2002 = 'P2002';
 
-export interface ActivePromptView {
+// Bir sürümün üç parçası: ana metin ve iki kanal eki.
+export interface PromptAddenda {
+  whatsappAddendum: string | null;
+  instagramAddendum: string | null;
+}
+
+export interface ActivePrompt extends PromptAddenda {
+  content: string;
+}
+
+export interface ActivePromptView extends ActivePrompt {
   source: 'db' | 'code';
   id?: string;
   version?: number;
-  content: string;
 }
 
 export interface PromptVersionItem {
@@ -28,6 +41,8 @@ export interface PromptVersionItem {
   isActive: boolean;
   createdAt: Date;
   createdBy: { firstName: string; lastName: string } | null;
+  hasWhatsappAddendum: boolean;
+  hasInstagramAddendum: boolean;
 }
 
 const VERSION_SELECT = {
@@ -38,6 +53,19 @@ const VERSION_SELECT = {
   createdAt: true,
   createdBy: { select: { firstName: true, lastName: true } },
 } satisfies Prisma.AssistantPromptSelect;
+
+// Ekler dahil tek sürüm görünümü.
+const DETAIL_SELECT = {
+  ...VERSION_SELECT,
+  content: true,
+  whatsappAddendum: true,
+  instagramAddendum: true,
+} satisfies Prisma.AssistantPromptSelect;
+
+// Boş ya da yalnız boşluktan oluşan ek, null olarak saklanır.
+function normalizeAddendum(value: string | null | undefined): string | null {
+  return value?.trim() ? value : null;
+}
 
 @Injectable()
 export class PromptVersionsService {
@@ -63,10 +91,28 @@ export class PromptVersionsService {
     }
   }
 
+  // Kanal eklerinin uzunluk kontrolü. null ve boş değer kabul edilir.
+  validateAddenda(addenda: Partial<PromptAddenda>): void {
+    for (const value of [addenda.whatsappAddendum, addenda.instagramAddendum]) {
+      if (value && value.length > PROMPT_ADDENDUM_MAX_CHARS) {
+        throw new BadRequestException(
+          `Kanal eki en fazla ${PROMPT_ADDENDUM_MAX_CHARS} karakter olabilir.`,
+        );
+      }
+    }
+  }
+
   // Aktif içerik: aktif DB sürümü yoksa kod içi varsayılan. Hata olursa varsayılan kullanılır.
   async getActiveContent(): Promise<string> {
     const active = await this.getActive();
     return active.content;
+  }
+
+  // Aktif ana metin ve iki kanal eki. Önbellek getActive ile aynıdır.
+  async getActivePrompt(): Promise<ActivePrompt> {
+    const { content, whatsappAddendum, instagramAddendum } =
+      await this.getActive();
+    return { content, whatsappAddendum, instagramAddendum };
   }
 
   async getActive(): Promise<ActivePromptView> {
@@ -76,7 +122,13 @@ export class PromptVersionsService {
     try {
       const row = await this.prisma.assistantPrompt.findFirst({
         where: { isActive: true },
-        select: { id: true, version: true, content: true },
+        select: {
+          id: true,
+          version: true,
+          content: true,
+          whatsappAddendum: true,
+          instagramAddendum: true,
+        },
       });
       const value: ActivePromptView = row
         ? {
@@ -84,8 +136,15 @@ export class PromptVersionsService {
             id: row.id,
             version: row.version,
             content: row.content,
+            whatsappAddendum: row.whatsappAddendum,
+            instagramAddendum: row.instagramAddendum,
           }
-        : { source: 'code', content: ELIF_SYSTEM_PROMPT };
+        : {
+            source: 'code',
+            content: ELIF_SYSTEM_PROMPT,
+            whatsappAddendum: null,
+            instagramAddendum: null,
+          };
       this.cache = { value, expiresAt: now + CACHE_TTL_MS };
       return value;
     } catch (err) {
@@ -93,7 +152,12 @@ export class PromptVersionsService {
         'Aktif Elif promptu okunamadı, kod içi varsayılan kullanılıyor',
         err as Error,
       );
-      return { source: 'code', content: ELIF_SYSTEM_PROMPT };
+      return {
+        source: 'code',
+        content: ELIF_SYSTEM_PROMPT,
+        whatsappAddendum: null,
+        instagramAddendum: null,
+      };
     }
   }
 
@@ -102,10 +166,22 @@ export class PromptVersionsService {
     active: { source: 'db' | 'code'; id?: string; version?: number };
     items: PromptVersionItem[];
   }> {
-    const items = await this.prisma.assistantPrompt.findMany({
+    const rows = await this.prisma.assistantPrompt.findMany({
       orderBy: { version: 'desc' },
-      select: VERSION_SELECT,
+      select: {
+        ...VERSION_SELECT,
+        whatsappAddendum: true,
+        instagramAddendum: true,
+      },
     });
+    // Ek metinleri listede taşınmaz; yalnızca dolu olup olmadığı döner.
+    const items: PromptVersionItem[] = rows.map(
+      ({ whatsappAddendum, instagramAddendum, ...rest }) => ({
+        ...rest,
+        hasWhatsappAddendum: normalizeAddendum(whatsappAddendum) !== null,
+        hasInstagramAddendum: normalizeAddendum(instagramAddendum) !== null,
+      }),
+    );
     const activeItem = items.find((item) => item.isActive);
     return {
       active: activeItem
@@ -118,7 +194,7 @@ export class PromptVersionsService {
   async findOne(id: string) {
     const row = await this.prisma.assistantPrompt.findUnique({
       where: { id },
-      select: { ...VERSION_SELECT, content: true },
+      select: DETAIL_SELECT,
     });
     if (!row) {
       throw new NotFoundException('Prompt sürümü bulunamadı.');
@@ -127,12 +203,23 @@ export class PromptVersionsService {
   }
 
   async create(
-    input: { content: string; note?: string; activate?: boolean },
+    input: {
+      content: string;
+      whatsappAddendum?: string | null;
+      instagramAddendum?: string | null;
+      note?: string;
+      activate?: boolean;
+    },
     actorUserId: string,
   ) {
     this.validateContent(input.content);
+    this.validateAddenda(input);
     const note = input.note?.trim() || null;
     const activate = input.activate === true;
+    const addenda: PromptAddenda = {
+      whatsappAddendum: normalizeAddendum(input.whatsappAddendum),
+      instagramAddendum: normalizeAddendum(input.instagramAddendum),
+    };
 
     try {
       const created = await this.prisma.$transaction(async (tx) => {
@@ -150,11 +237,12 @@ export class PromptVersionsService {
           data: {
             version,
             content: input.content,
+            ...addenda,
             note,
             isActive: activate,
             createdById: actorUserId,
           },
-          select: VERSION_SELECT,
+          select: DETAIL_SELECT,
         });
       });
       this.invalidate();
@@ -171,6 +259,7 @@ export class PromptVersionsService {
   }
 
   // Geri dönüş de bu işlemle yapılır. Tek aktif sürüm transaction ile korunur.
+  // Ana metin ve iki ek birlikte etkinleşir.
   async activate(id: string, actorUserId: string) {
     const target = await this.prisma.assistantPrompt.findUnique({
       where: { id },

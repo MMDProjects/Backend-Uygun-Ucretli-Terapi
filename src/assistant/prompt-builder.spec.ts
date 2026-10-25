@@ -206,3 +206,45 @@ describe('PromptBuilder', () => {
     });
   });
 });
+
+describe('PromptBuilder.buildChannelAddendum', () => {
+  const builder = new PromptBuilder(
+    buildPrismaMock() as unknown as PrismaService,
+    buildConfigMock() as unknown as ConfigService,
+  );
+  const ADDENDA = {
+    whatsappAddendum: 'WA KURAL',
+    instagramAddendum: 'IG KURAL',
+  };
+
+  it('WhatsApp kanalında yalnız WhatsApp eklenir ve başlık konur', () => {
+    expect(builder.buildChannelAddendum(Channel.WHATSAPP, ADDENDA)).toBe(
+      '\n\n[KANALA ÖZEL TALİMATLAR — WhatsApp]\nWA KURAL',
+    );
+  });
+
+  it('Instagram kanalında yalnız Instagram eklenir ve başlık konur', () => {
+    expect(builder.buildChannelAddendum(Channel.INSTAGRAM, ADDENDA)).toBe(
+      '\n\n[KANALA ÖZEL TALİMATLAR — Instagram]\nIG KURAL',
+    );
+  });
+
+  it('ilgili kanalın eki boşsa boş metin döner (başlık yok)', () => {
+    expect(
+      builder.buildChannelAddendum(Channel.WHATSAPP, {
+        whatsappAddendum: null,
+        instagramAddendum: 'IG KURAL',
+      }),
+    ).toBe('');
+    expect(
+      builder.buildChannelAddendum(Channel.INSTAGRAM, {
+        whatsappAddendum: 'WA KURAL',
+        instagramAddendum: '   ',
+      }),
+    ).toBe('');
+  });
+
+  it('WEB kanalında ek uygulanmaz', () => {
+    expect(builder.buildChannelAddendum(Channel.WEB, ADDENDA)).toBe('');
+  });
+});

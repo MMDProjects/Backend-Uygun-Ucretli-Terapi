@@ -99,6 +99,18 @@ function buildDeps(
     buildPriceTable: jest.fn<any, any>().mockResolvedValue('TABLO'),
     buildSystemPrompt: jest.fn<any, any>().mockReturnValue('SYSTEM'),
     buildKnowledgeContext: jest.fn<any, any>().mockReturnValue('BILGI'),
+    // Gerçek PromptBuilder mantığının sade karşılığı: yalnızca ilgili kanalın eki.
+    buildChannelAddendum: jest.fn<any, any>(
+      (channel: string, addenda: Record<string, string | null>) => {
+        const text =
+          channel === 'WHATSAPP'
+            ? addenda.whatsappAddendum
+            : channel === 'INSTAGRAM'
+              ? addenda.instagramAddendum
+              : null;
+        return text ? `\n\n[KANALA ÖZEL]\n${text}` : '';
+      },
+    ),
     buildChannelTag: jest.fn<any, any>().mockReturnValue('[KANAL]'),
     buildNowTag: jest.fn<any, any>().mockReturnValue('[ŞU AN]'),
   };
@@ -122,6 +134,11 @@ function buildDeps(
   };
   const promptVersions = {
     getActiveContent: jest.fn<any, any>().mockResolvedValue('AKTIF PROMPT'),
+    getActivePrompt: jest.fn<any, any>().mockResolvedValue({
+      content: 'AKTIF PROMPT',
+      whatsappAddendum: null,
+      instagramAddendum: null,
+    }),
   };
 
   const service = new AssistantService(
@@ -1392,7 +1409,7 @@ describe('aydınlatma metni', () => {
         promptOverride: 'GECICI PROMPT',
       });
 
-      expect(deps.promptVersions.getActiveContent).not.toHaveBeenCalled();
+      expect(deps.promptVersions.getActivePrompt).not.toHaveBeenCalled();
       expect(deps.promptBuilder.buildSystemPrompt).toHaveBeenCalledWith(
         'TABLO',
         'GECICI PROMPT',
@@ -1408,11 +1425,161 @@ describe('aydınlatma metni', () => {
 
       await deps.service.previewReply('Merhaba');
 
-      expect(deps.promptVersions.getActiveContent).toHaveBeenCalled();
+      expect(deps.promptVersions.getActivePrompt).toHaveBeenCalled();
       expect(deps.promptBuilder.buildSystemPrompt).toHaveBeenCalledWith(
         'TABLO',
         'AKTIF PROMPT',
       );
+    });
+  });
+
+  describe('kanala özel ek', () => {
+    const ADDENDA = {
+      whatsappAddendum: 'WA EKI',
+      instagramAddendum: 'IG EKI',
+    };
+
+    function systemMessage(deps: ReturnType<typeof buildDeps>, call = 0) {
+      const messages = deps.openai.chat.mock.calls[call][0].messages as {
+        role: string;
+        content: string;
+      }[];
+      return messages[0].content;
+    }
+
+    function activeWith(addenda: Record<string, string | null>) {
+      return {
+        content: 'AKTIF PROMPT',
+        whatsappAddendum: null,
+        instagramAddendum: null,
+        ...addenda,
+      };
+    }
+
+    it('WhatsApp konuşmasında yalnız WhatsApp eki modele gider', async () => {
+      const deps = buildDeps('LIVE');
+      deps.promptVersions.getActivePrompt.mockResolvedValueOnce(
+        activeWith(ADDENDA),
+      );
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      const system = systemMessage(deps);
+      expect(system).toContain('WA EKI');
+      expect(system).not.toContain('IG EKI');
+    });
+
+    it('Instagram konuşmasında yalnız Instagram eki modele gider', async () => {
+      const deps = buildDeps('LIVE');
+      deps.prisma.conversation.findUnique.mockResolvedValue({
+        ...CONVERSATION,
+        channel: 'INSTAGRAM',
+      });
+      deps.promptVersions.getActivePrompt.mockResolvedValueOnce(
+        activeWith(ADDENDA),
+      );
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      const system = systemMessage(deps);
+      expect(system).toContain('IG EKI');
+      expect(system).not.toContain('WA EKI');
+    });
+
+    it('sistem mesajı sırası: ana metin, kanal eki, bilgi bankası', async () => {
+      const deps = buildDeps('LIVE');
+      deps.promptVersions.getActivePrompt.mockResolvedValueOnce(
+        activeWith(ADDENDA),
+      );
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      const system = systemMessage(deps);
+      const main = system.indexOf('SYSTEM');
+      const addendum = system.indexOf('WA EKI');
+      const knowledge = system.indexOf('BILGI');
+      expect(main).toBeGreaterThanOrEqual(0);
+      expect(addendum).toBeGreaterThan(main);
+      expect(knowledge).toBeGreaterThan(addendum);
+    });
+
+    it('ek boşsa kanal başlığı ve ek metni eklenmez', async () => {
+      const deps = buildDeps('LIVE');
+      deps.promptVersions.getActivePrompt.mockResolvedValueOnce(
+        activeWith({ whatsappAddendum: null, instagramAddendum: null }),
+      );
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.handleIncoming('conv-1', 'Merhaba');
+
+      expect(systemMessage(deps)).toBe('SYSTEM\n\nBILGI');
+    });
+
+    it('previewReply varsayılan olarak WhatsApp eki kullanır', async () => {
+      const deps = buildDeps('OFF');
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.previewReply('Merhaba', {
+        promptOverride: 'GECICI PROMPT',
+        addendaOverride: ADDENDA,
+      });
+
+      const system = systemMessage(deps);
+      expect(system).toContain('WA EKI');
+      expect(system).not.toContain('IG EKI');
+    });
+
+    it('previewReply channel INSTAGRAM ise Instagram eki kullanır', async () => {
+      const deps = buildDeps('OFF');
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.previewReply('Merhaba', {
+        promptOverride: 'GECICI PROMPT',
+        addendaOverride: ADDENDA,
+        channel: 'INSTAGRAM' as const,
+      });
+
+      const system = systemMessage(deps);
+      expect(system).toContain('IG EKI');
+      expect(system).not.toContain('WA EKI');
+    });
+
+    it('previewReply promptOverride varken ek verilmezse ek kullanmaz', async () => {
+      const deps = buildDeps('OFF');
+      deps.promptVersions.getActivePrompt.mockResolvedValueOnce(
+        activeWith(ADDENDA),
+      );
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.previewReply('Merhaba', {
+        promptOverride: 'GECICI PROMPT',
+      });
+
+      expect(systemMessage(deps)).not.toContain('WA EKI');
     });
   });
 });

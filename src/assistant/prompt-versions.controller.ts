@@ -6,6 +6,7 @@ import {
   Post,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { Channel } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AssistantService } from './assistant.service';
@@ -47,7 +48,13 @@ export class PromptVersionsController {
     @CurrentUser() user: { id: string },
   ) {
     return this.prompts.create(
-      { content: dto.content, note: dto.note, activate: dto.activate },
+      {
+        content: dto.content,
+        whatsappAddendum: dto.whatsappAddendum,
+        instagramAddendum: dto.instagramAddendum,
+        note: dto.note,
+        activate: dto.activate,
+      },
       user.id,
     );
   }
@@ -69,6 +76,12 @@ export class PromptVersionsController {
     try {
       return await this.assistant.previewReply(dto.message, {
         promptOverride: dto.content,
+        addendaOverride: {
+          whatsappAddendum: dto.whatsappAddendum,
+          instagramAddendum: dto.instagramAddendum,
+        },
+        channel:
+          dto.channel === 'INSTAGRAM' ? Channel.INSTAGRAM : Channel.WHATSAPP,
       });
     } catch (error) {
       if (error instanceof OpenAiUnavailableError) {
