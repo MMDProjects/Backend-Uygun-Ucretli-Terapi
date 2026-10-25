@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   Channel,
   ConversationStatus,
@@ -27,6 +28,8 @@ const WINDOW_CLOSED_MESSAGE =
   '24 saatlik mesajlaşma penceresi kapandı; danışan yeniden yazana kadar serbest mesaj gönderilemez.';
 const CRISIS_HANDBACK_MESSAGE = 'Kriz işaretli konuşma Elif’e geri verilemez.';
 const SEND_FAILED_MESSAGE = 'Mesaj Meta’ya iletilemedi.';
+const CLOSED_CONVERSATION_MESSAGE = 'Kapalı konuşmaya mesaj gönderilemez.';
+const DEFAULT_INSTAGRAM_MAX_CHARS = 1000;
 
 const AGENT_SELECT = { select: { firstName: true, lastName: true } } as const;
 
@@ -36,6 +39,7 @@ export class InboxService {
     private readonly prisma: PrismaService,
     private readonly metaSender: MetaSenderService,
     private readonly inboxEvents: InboxEventsService,
+    private readonly config: ConfigService,
   ) {}
 
   async listConversations(query: ListConversationsQueryDto) {
@@ -142,6 +146,18 @@ export class InboxService {
   async sendMessage(id: string, dto: SendMessageDto, agentUserId: string) {
     const conversation = await this.findConversationOrFail(id);
 
+    if (conversation.status === ConversationStatus.CLOSED) {
+      throw new ConflictException(CLOSED_CONVERSATION_MESSAGE);
+    }
+    if (
+      conversation.channel === Channel.INSTAGRAM &&
+      dto.content.length > this.instagramMaxChars()
+    ) {
+      throw new BadRequestException(
+        `Instagram mesajları en fazla ${this.instagramMaxChars()} karakter olabilir.`,
+      );
+    }
+
     if (!this.isWindowOpen(await this.lastClientMessageAt(id))) {
       throw new ConflictException(WINDOW_CLOSED_MESSAGE);
     }
@@ -161,12 +177,12 @@ export class InboxService {
       });
     }
 
-    const sent = await this.metaSender.sendText(
+    const res = await this.metaSender.sendText(
       conversation.channel,
       recipientId,
       dto.content,
     );
-    if (!sent) {
+    if (!res.ok) {
       throw new BadGatewayException(SEND_FAILED_MESSAGE);
     }
 
@@ -176,6 +192,7 @@ export class InboxService {
         senderType: SenderType.AGENT,
         content: dto.content,
         agentUserId,
+        metaMessageId: res.messageId ?? null,
       },
       include: { agentUser: AGENT_SELECT },
     });
@@ -217,6 +234,20 @@ export class InboxService {
   }
 
   async updateContact(id: string, dto: UpdateContactDto) {
+    const current = await this.prisma.contact.findUnique({ where: { id } });
+    if (!current) {
+      throw new NotFoundException('Danışan bulunamadı.');
+    }
+    if (
+      current.channel === Channel.WHATSAPP &&
+      dto.phone !== undefined &&
+      dto.phone !== current.phone
+    ) {
+      throw new BadRequestException(
+        'WhatsApp numarası değiştirilemez; bu numara mesaj adresidir.',
+      );
+    }
+
     try {
       return await this.prisma.contact.update({ where: { id }, data: dto });
     } catch (err) {
@@ -235,7 +266,7 @@ export class InboxService {
   }
 
   async getCounts() {
-    const [open, pendingAgent, crisis, newLeads, openUnanswered] =
+    const [open, pendingAgent, crisis, openCrisis, newLeads, openUnanswered] =
       await this.prisma.$transaction([
         this.prisma.conversation.count({
           where: { status: ConversationStatus.OPEN, isBotActive: true },
@@ -249,12 +280,22 @@ export class InboxService {
             status: { not: ConversationStatus.CLOSED },
           },
         }),
+        this.prisma.conversation.count({
+          where: { flaggedCrisis: true, status: ConversationStatus.OPEN },
+        }),
         this.prisma.lead.count({ where: { status: LeadStatus.YENI } }),
         this.prisma.unansweredQuestion.count({
           where: { status: UnansweredStatus.OPEN },
         }),
       ]);
-    return { open, pendingAgent, crisis, newLeads, openUnanswered };
+    return {
+      open,
+      pendingAgent,
+      crisis,
+      attention: pendingAgent + openCrisis,
+      newLeads,
+      openUnanswered,
+    };
   }
 
   stream(): Observable<{ type: string; data: unknown }> {
@@ -283,6 +324,18 @@ export class InboxService {
       select: { createdAt: true },
     });
     return last?.createdAt ?? null;
+  }
+
+  private instagramMaxChars(): number {
+    const raw = Number(
+      this.config.get<string>(
+        'INSTAGRAM_MAX_CHARS',
+        String(DEFAULT_INSTAGRAM_MAX_CHARS),
+      ),
+    );
+    return Number.isInteger(raw) && raw >= 1
+      ? raw
+      : DEFAULT_INSTAGRAM_MAX_CHARS;
   }
 
   private isWindowOpen(lastClientAt: Date | null): boolean {

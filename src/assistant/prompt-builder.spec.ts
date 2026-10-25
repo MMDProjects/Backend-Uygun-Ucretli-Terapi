@@ -12,6 +12,8 @@ import { CRISIS_MESSAGE } from './crisis-message';
 
 const PRICE_PLACEHOLDER = '{{FIYAT_TABLOSU}}';
 const PROMPT_MD_PATH = path.resolve(__dirname, '../../../prompt.md');
+// prompt.md repo dışında; CI'da yoksa yalnızca karşılaştırma testi atlanır
+const hasPromptMd = fs.existsSync(PROMPT_MD_PATH);
 
 function buildPrismaMock() {
   return {
@@ -139,15 +141,21 @@ describe('PromptBuilder', () => {
   });
 
   describe('prompt dosyası', () => {
-    it('prompt.md fiyat tablosu dışındaki tüm metni ELIF_SYSTEM_PROMPT içinde taşır', () => {
-      const normalize = (text: string) => text.replace(/\r\n/g, '\n');
-      const source = normalize(fs.readFileSync(PROMPT_MD_PATH, 'utf8'));
-      const rebuilt = normalize(
-        ELIF_SYSTEM_PROMPT.replace(PRICE_PLACEHOLDER, () => PROMPT_PRICE_TABLE),
-      );
+    (hasPromptMd ? it : it.skip)(
+      'prompt.md fiyat tablosu dışındaki tüm metni ELIF_SYSTEM_PROMPT içinde taşır',
+      () => {
+        const normalize = (text: string) => text.replace(/\r\n/g, '\n');
+        const source = normalize(fs.readFileSync(PROMPT_MD_PATH, 'utf8'));
+        const rebuilt = normalize(
+          ELIF_SYSTEM_PROMPT.replace(
+            PRICE_PLACEHOLDER,
+            () => PROMPT_PRICE_TABLE,
+          ),
+        );
 
-      expect(rebuilt).toBe(source);
-    });
+        expect(rebuilt).toBe(source);
+      },
+    );
 
     it('CRISIS_MESSAGE sabiti tanımlı ve boş değil', () => {
       expect(CRISIS_MESSAGE.length).toBeGreaterThan(0);

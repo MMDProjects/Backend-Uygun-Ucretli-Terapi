@@ -1,4 +1,10 @@
-import { BadGatewayException, ConflictException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InboxService } from './inbox.service';
 import { MetaSenderService } from '../webhooks/meta-sender.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
@@ -15,6 +21,10 @@ function buildPrismaMock() {
     message: {
       findFirst: jest.fn<any, any>().mockResolvedValue(null),
       create: jest.fn<any, any>(),
+    },
+    contact: {
+      findUnique: jest.fn<any, any>(),
+      update: jest.fn<any, any>(),
     },
     lead: { count: jest.fn<any, any>().mockResolvedValue(0) },
     unansweredQuestion: { count: jest.fn<any, any>().mockResolvedValue(0) },
@@ -42,16 +52,23 @@ describe('InboxService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
   let metaSender: { sendText: jest.Mock };
   let inboxEvents: { emit: jest.Mock; stream: jest.Mock };
+  let config: { get: jest.Mock };
   let service: InboxService;
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    metaSender = { sendText: jest.fn<any, any>().mockResolvedValue(true) };
+    metaSender = {
+      sendText: jest.fn<any, any>().mockResolvedValue({ ok: true }),
+    };
     inboxEvents = { emit: jest.fn<any, any>(), stream: jest.fn<any, any>() };
+    config = {
+      get: jest.fn((_key: string, fallback?: string) => fallback),
+    };
     service = new InboxService(
       prisma,
       metaSender as unknown as MetaSenderService,
       inboxEvents as unknown as InboxEventsService,
+      config as unknown as ConfigService,
     );
   });
 
@@ -158,12 +175,151 @@ describe('InboxService', () => {
         conversation({ isBotActive: false }),
       );
       prisma.message.findFirst.mockResolvedValue({ createdAt: new Date() });
-      metaSender.sendText.mockResolvedValue(false);
+      metaSender.sendText.mockResolvedValue({ ok: false });
 
       await expect(
         service.sendMessage('conv-1', { content: 'Merhaba' }, 'admin-1'),
       ).rejects.toThrow(BadGatewayException);
       expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendMessage kuralları', () => {
+    it('kapalı konuşmaya 409 döner ve Meta’ya göndermez', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(
+        conversation({ status: 'CLOSED', isBotActive: false }),
+      );
+      prisma.message.findFirst.mockResolvedValue({ createdAt: new Date() });
+
+      await expect(
+        service.sendMessage('conv-1', { content: 'Merhaba' }, 'admin-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(metaSender.sendText).not.toHaveBeenCalled();
+    });
+
+    it('Instagram’da 1000 karakteri aşan mesaj 400 döner ve göndermez', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(
+        conversation({
+          channel: 'INSTAGRAM',
+          isBotActive: false,
+          contact: { id: 'contact-1', phone: null, instagramId: 'ig-99' },
+        }),
+      );
+      prisma.message.findFirst.mockResolvedValue({ createdAt: new Date() });
+
+      await expect(
+        service.sendMessage('conv-1', { content: 'a'.repeat(1001) }, 'admin-1'),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Instagram mesajları en fazla 1000 karakter olabilir.',
+        ),
+      );
+      expect(metaSender.sendText).not.toHaveBeenCalled();
+    });
+
+    it('Instagram’da tam 1000 karakterlik mesajı kabul eder', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(
+        conversation({
+          channel: 'INSTAGRAM',
+          isBotActive: false,
+          contact: { id: 'contact-1', phone: null, instagramId: 'ig-99' },
+        }),
+      );
+      prisma.message.findFirst.mockResolvedValue({ createdAt: new Date() });
+      prisma.message.create.mockResolvedValue({ id: 'msg-3' });
+
+      await service.sendMessage(
+        'conv-1',
+        { content: 'a'.repeat(1000) },
+        'admin-1',
+      );
+
+      expect(metaSender.sendText).toHaveBeenCalled();
+    });
+
+    it('WhatsApp’ta uzunluk sınırı uygulanmaz', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(conversation());
+      prisma.message.findFirst.mockResolvedValue({ createdAt: new Date() });
+      prisma.message.create.mockResolvedValue({ id: 'msg-4' });
+
+      await service.sendMessage(
+        'conv-1',
+        { content: 'a'.repeat(1001) },
+        'admin-1',
+      );
+
+      expect(metaSender.sendText).toHaveBeenCalled();
+    });
+
+    it('Meta’nın döndürdüğü messageId’yi AGENT mesajına metaMessageId olarak kaydeder', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(conversation());
+      prisma.message.findFirst.mockResolvedValue({ createdAt: new Date() });
+      metaSender.sendText.mockResolvedValue({ ok: true, messageId: 'wamid-7' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-5' });
+
+      await service.sendMessage('conv-1', { content: 'Merhaba' }, 'admin-1');
+
+      expect(prisma.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ metaMessageId: 'wamid-7' }),
+        }),
+      );
+    });
+  });
+
+  describe('updateContact', () => {
+    it('WhatsApp kişisinin telefonu değişirse 400 döner', async () => {
+      prisma.contact.findUnique.mockResolvedValue({
+        id: 'contact-1',
+        channel: 'WHATSAPP',
+        phone: '905550001122',
+      });
+
+      await expect(
+        service.updateContact('contact-1', { phone: '905559998877' }),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'WhatsApp numarası değiştirilemez; bu numara mesaj adresidir.',
+        ),
+      );
+      expect(prisma.contact.update).not.toHaveBeenCalled();
+    });
+
+    it('WhatsApp kişisinde aynı telefon gelirse hata vermez', async () => {
+      prisma.contact.findUnique.mockResolvedValue({
+        id: 'contact-1',
+        channel: 'WHATSAPP',
+        phone: '905550001122',
+      });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+
+      await service.updateContact('contact-1', {
+        phone: '905550001122',
+        fullName: 'Ayşe',
+      });
+
+      expect(prisma.contact.update).toHaveBeenCalled();
+    });
+
+    it('Instagram kişisinin telefonu düzenlenebilir kalır', async () => {
+      prisma.contact.findUnique.mockResolvedValue({
+        id: 'contact-2',
+        channel: 'INSTAGRAM',
+        phone: null,
+      });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-2' });
+
+      await service.updateContact('contact-2', { phone: '905551112233' });
+
+      expect(prisma.contact.update).toHaveBeenCalled();
+    });
+
+    it('kişi yoksa 404 döner', async () => {
+      prisma.contact.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateContact('missing', { fullName: 'X' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -225,10 +381,11 @@ describe('InboxService', () => {
   });
 
   describe('getCounts', () => {
-    it('sidebar rozetlerini beş sayıyla döner', async () => {
+    it('sidebar rozetlerini mevcut alanlarla ve attention ile döner', async () => {
       prisma.conversation.count
         .mockResolvedValueOnce(4)
         .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(1)
         .mockResolvedValueOnce(1);
       prisma.lead.count.mockResolvedValue(3);
       prisma.unansweredQuestion.count.mockResolvedValue(5);
@@ -239,11 +396,27 @@ describe('InboxService', () => {
         open: 4,
         pendingAgent: 2,
         crisis: 1,
+        attention: 3,
         newLeads: 3,
         openUnanswered: 5,
       });
       expect(prisma.conversation.count).toHaveBeenCalledWith({
         where: { flaggedCrisis: true, status: { not: 'CLOSED' } },
+      });
+    });
+
+    it('attention, PENDING_AGENT sayısı ile açık kriz konuşmalarının toplamıdır', async () => {
+      prisma.conversation.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(7)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(2);
+
+      const counts = await service.getCounts();
+
+      expect(counts.attention).toBe(9);
+      expect(prisma.conversation.count).toHaveBeenCalledWith({
+        where: { flaggedCrisis: true, status: 'OPEN' },
       });
     });
   });

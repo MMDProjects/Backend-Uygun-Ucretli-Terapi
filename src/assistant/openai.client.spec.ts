@@ -141,19 +141,6 @@ describe('OpenAiClient', () => {
       expect(JSON.parse(init.body as string)).not.toHaveProperty('tools');
       expect(result).toEqual({ content: 'Tamam', toolCalls: [] });
     });
-
-    it('HTTP hatasında Error fırlatır', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        new Response('{"error":"rate"}', { status: 429 }),
-      );
-      const client = new OpenAiClient(
-        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
-      );
-
-      await expect(
-        client.chat({ messages: [{ role: 'user', content: 'x' }] }),
-      ).rejects.toThrow('HTTP 429');
-    });
   });
 
   describe('embed', () => {
@@ -209,12 +196,101 @@ describe('OpenAiClient', () => {
     });
 
     it('HTTP hatasında Error fırlatır', async () => {
-      fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 500 }));
+      fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 400 }));
       const client = new OpenAiClient(
         buildConfig({ OPENAI_API_KEY: 'sk-test' }),
       );
 
-      await expect(client.embed(['x'])).rejects.toThrow('HTTP 500');
+      await expect(client.embed(['x'])).rejects.toThrow('HTTP 400');
+    });
+  });
+
+  describe('yeniden deneme ve zaman aşımı', () => {
+    const messages = [{ role: 'user' as const, content: 'x' }];
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('429 yanıtında iki kez daha dener ve sonra Error fırlatır', async () => {
+      fetchSpy.mockImplementation(() =>
+        Promise.resolve(new Response('{"error":"rate"}', { status: 429 })),
+      );
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
+
+      const assertion = expect(client.chat({ messages })).rejects.toThrow(
+        'HTTP 429',
+      );
+      await jest.runAllTimersAsync();
+      await assertion;
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it('5xx yanıtında yeniden deneyip başarıya ulaşır', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(new Response('{}', { status: 500 }))
+        .mockResolvedValueOnce(
+          jsonResponse({ choices: [{ message: { content: 'Tamam' } }] }),
+        );
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
+
+      const pending = client.chat({ messages });
+      await jest.runAllTimersAsync();
+
+      await expect(pending).resolves.toEqual({
+        content: 'Tamam',
+        toolCalls: [],
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('ağ hatasında yeniden dener', async () => {
+      fetchSpy
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(
+          jsonResponse({ data: [{ index: 0, embedding: [1] }] }),
+        );
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
+
+      const pending = client.embed(['x']);
+      await jest.runAllTimersAsync();
+
+      await expect(pending).resolves.toEqual([[1]]);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('4xx yanıtında (429 dışında) yeniden denemez', async () => {
+      fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 400 }));
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
+
+      await expect(client.chat({ messages })).rejects.toThrow('HTTP 400');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('istekte zaman aşımı sinyali bulunur', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: 'x' } }] }),
+      );
+      const client = new OpenAiClient(
+        buildConfig({ OPENAI_API_KEY: 'sk-test' }),
+      );
+
+      await client.chat({ messages });
+
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(init.signal).toBeInstanceOf(AbortSignal);
     });
   });
 });

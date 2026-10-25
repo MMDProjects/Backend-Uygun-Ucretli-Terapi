@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 
 const CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 const EMBEDDINGS_URL = 'https://api.openai.com/v1/embeddings';
+const DEFAULT_CHAT_TIMEOUT_MS = 30000;
+const EMBED_TIMEOUT_MS = 15000;
+// Yeniden deneme beklemeleri; uzunluk en fazla deneme sayısını belirler.
+const RETRY_DELAYS_MS = [1000, 3000];
 
 export class OpenAiUnavailableError extends Error {
   constructor(message = 'OPENAI_API_KEY tanımlı değil') {
@@ -77,14 +81,13 @@ export class OpenAiClient {
       body.tools = input.tools;
     }
 
-    const res = await fetch(CHAT_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+    const res = await this.post(
+      CHAT_URL,
+      apiKey,
+      body,
+      this.chatTimeoutMs(),
+      'OpenAI chat',
+    );
     if (!res.ok) {
       throw new Error(`OpenAI chat isteği başarısız: HTTP ${res.status}`);
     }
@@ -111,20 +114,19 @@ export class OpenAiClient {
       return [];
     }
 
-    const res = await fetch(EMBEDDINGS_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const res = await this.post(
+      EMBEDDINGS_URL,
+      apiKey,
+      {
         model: this.config.get<string>(
           'OPENAI_EMBEDDING_MODEL',
           'text-embedding-3-small',
         ),
         input: texts,
-      }),
-    });
+      },
+      EMBED_TIMEOUT_MS,
+      'OpenAI embedding',
+    );
     if (!res.ok) {
       throw new Error(`OpenAI embedding isteği başarısız: HTTP ${res.status}`);
     }
@@ -133,6 +135,53 @@ export class OpenAiClient {
     return [...json.data]
       .sort((a, b) => a.index - b.index)
       .map((item) => item.embedding);
+  }
+
+  // 429, 5xx, ağ hatası ve timeout yeniden denenir; diğer 4xx denenmez.
+  private async post(
+    url: string,
+    apiKey: string,
+    body: Record<string, unknown>,
+    timeoutMs: number,
+    label: string,
+  ): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      const canRetry = attempt < RETRY_DELAYS_MS.length;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        const retryable = res.status === 429 || res.status >= 500;
+        if (res.ok || !retryable || !canRetry) {
+          return res;
+        }
+        this.logger.warn(`${label} HTTP ${res.status}, yeniden deneniyor`);
+      } catch (err) {
+        if (!canRetry) {
+          throw err;
+        }
+        this.logger.warn(`${label} ağ hatası, yeniden deneniyor`);
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, RETRY_DELAYS_MS[attempt]),
+      );
+    }
+  }
+
+  private chatTimeoutMs(): number {
+    const value = Number(
+      this.config.get<string>(
+        'OPENAI_TIMEOUT_MS',
+        String(DEFAULT_CHAT_TIMEOUT_MS),
+      ),
+    );
+    return value > 0 ? value : DEFAULT_CHAT_TIMEOUT_MS;
   }
 
   private requireApiKey(): string {

@@ -19,13 +19,68 @@ import { CRISIS_MESSAGE } from './crisis-message';
 
 const MAX_TOOL_TURNS = 3;
 const DEFAULT_HISTORY_LIMIT = 20;
+const DEFAULT_DEBOUNCE_MS = 5000;
+const DEFAULT_MAX_REPLIES_PER_HOUR = 20;
+const DEFAULT_INSTAGRAM_MAX_CHARS = 1000;
+const WHATSAPP_MAX_CHARS = 4096;
+const REPLY_WINDOW_MS = 60 * 60 * 1000;
+const UNSUPPORTED_PREFIX = '[desteklenmeyen mesaj tipi';
+export const MEDIA_REPLY =
+  'Sesli mesaj ve görselleri şu an açamıyorum. Yazılı olarak iletirseniz hemen yardımcı olayım; dilerseniz sizi ekibimize de aktarabilirim.';
+const MEDIA_HANDOFF_SUMMARY =
+  'Danışan medya mesajı gönderiyor (sesli mesaj/görsel)';
 
 type ConversationWithContact = Conversation & { contact: Contact };
+type MessageKind = 'text' | 'unsupported';
+interface PendingTurn {
+  timer: NodeJS.Timeout;
+  hasText: boolean;
+}
+
+const isUnsupported = (content: string): boolean =>
+  content.startsWith(UNSUPPORTED_PREFIX);
+
+// Uzun metni kanal sınırına göre parçalar: önce boş satır, sonra cümle sonu,
+// en son boşluk. Hiçbir parça sınırı aşmaz.
+export function splitForChannel(text: string, maxChars: number): string[] {
+  if (text.length <= maxChars) {
+    return [text];
+  }
+  const parts: string[] = [];
+  let rest = text.replace(/\r\n/g, '\n').trim();
+  while (rest.length > maxChars) {
+    const cut = cutPoint(rest, maxChars);
+    parts.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) {
+    parts.push(rest);
+  }
+  return parts;
+}
+
+function cutPoint(text: string, max: number): number {
+  const paragraph = text.lastIndexOf('\n\n', max);
+  if (paragraph > 0) {
+    return paragraph;
+  }
+  for (let i = Math.min(max - 1, text.length - 2); i > 0; i--) {
+    if ('.!?'.includes(text[i]) && /\s/.test(text[i + 1])) {
+      return i + 1;
+    }
+  }
+  const space = text.lastIndexOf(' ', max);
+  if (space > 0) {
+    return space;
+  }
+  return max;
+}
 
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
   private readonly queues = new Map<string, Promise<void>>();
+  private readonly pendingTurns = new Map<string, PendingTurn>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -40,14 +95,54 @@ export class AssistantService {
     private readonly inboxEvents: InboxEventsService,
   ) {}
 
-  handleIncoming(conversationId: string, latestText: string): Promise<void> {
-    return this.enqueue(conversationId, () =>
-      this.runIncoming(conversationId, latestText),
-    );
+  // Cevabı hemen üretmez; süre dolunca tek tur çalıştırır.
+  handleIncoming(
+    conversationId: string,
+    latestText: string,
+    opts?: { kind?: MessageKind },
+  ): Promise<void> {
+    if (!this.isEnabled()) {
+      return Promise.resolve();
+    }
+    const kind = opts?.kind ?? 'text';
+    const delay = this.debounceMs();
+    if (delay <= 0) {
+      return this.enqueue(conversationId, () =>
+        this.runIncoming(conversationId, latestText, kind),
+      );
+    }
+
+    const previous = this.pendingTurns.get(conversationId);
+    if (previous) {
+      clearTimeout(previous.timer);
+    }
+    const hasText = previous?.hasText === true || kind === 'text';
+    const timer = setTimeout(() => {
+      this.pendingTurns.delete(conversationId);
+      void this.enqueue(conversationId, () =>
+        this.runIncoming(
+          conversationId,
+          latestText,
+          hasText ? 'text' : 'unsupported',
+        ),
+      );
+    }, delay);
+    this.pendingTurns.set(conversationId, { timer, hasText });
+    return Promise.resolve();
   }
 
-  handleCrisis(conversationId: string): Promise<void> {
-    return this.enqueue(conversationId, () => this.runCrisis(conversationId));
+  handleCrisis(
+    conversationId: string,
+    opts?: { repeat?: boolean },
+  ): Promise<void> {
+    const pending = this.pendingTurns.get(conversationId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pendingTurns.delete(conversationId);
+    }
+    return this.enqueue(conversationId, () =>
+      this.runCrisis(conversationId, opts?.repeat === true),
+    );
   }
 
   private enqueue(
@@ -81,35 +176,36 @@ export class AssistantService {
     return this.config.get<string>('ASSISTANT_ENABLED') === 'true';
   }
 
-  private async runCrisis(conversationId: string): Promise<void> {
-    if (this.isEnabled()) {
-      const conversation = await this.loadConversation(conversationId);
-      if (conversation) {
-        const recipientId = this.recipientId(conversation);
-        if (recipientId) {
-          const sent = await this.metaSender.sendText(
-            conversation.channel,
-            recipientId,
-            CRISIS_MESSAGE,
-          );
-          if (sent) {
-            await this.saveBotMessage(conversationId, CRISIS_MESSAGE);
-          }
-        }
-      }
+  private async runCrisis(
+    conversationId: string,
+    repeat: boolean,
+  ): Promise<void> {
+    if (!repeat) {
+      await this.sendCrisisMessage(conversationId);
     }
+    const text = repeat
+      ? `Kriz konuşmasında yeni kriz ifadesi, konuşma: ${conversationId}`
+      : `Kriz ifadesi tespit edildi, konuşma: ${conversationId}`;
+    await this.notifications.notifyAdmins('DANGER_PANIC', text).catch(() => {});
+  }
 
-    await this.notifications
-      .notifyAdmins(
-        'DANGER_PANIC',
-        `Kriz ifadesi tespit edildi, konuşma: ${conversationId}`,
-      )
-      .catch(() => {});
+  private async sendCrisisMessage(conversationId: string): Promise<void> {
+    if (!this.isEnabled()) {
+      return;
+    }
+    const conversation = await this.loadConversation(conversationId);
+    if (!conversation) {
+      return;
+    }
+    if (!(await this.deliver(conversation, CRISIS_MESSAGE))) {
+      this.logger.warn(`Kriz mesajı gönderilemedi (${conversationId})`);
+    }
   }
 
   private async runIncoming(
     conversationId: string,
     latestText: string,
+    kind: MessageKind,
   ): Promise<void> {
     if (!this.isEnabled()) {
       return;
@@ -124,13 +220,21 @@ export class AssistantService {
       ) {
         return;
       }
+      if (await this.reachedReplyLimit(conversationId)) {
+        return;
+      }
+      if (kind === 'unsupported') {
+        await this.runUnsupported(conversation);
+        return;
+      }
 
+      const query = await this.buildSearchQuery(conversationId, latestText);
       const history = await this.loadHistory(conversationId);
-      const search = await this.knowledge.search(latestText);
+      const search = await this.knowledge.search(query);
       if (search.items.length === 0) {
         await this.knowledge.recordUnanswered(
           conversationId,
-          latestText,
+          query,
           search.topScore,
         );
       }
@@ -170,15 +274,7 @@ export class AssistantService {
         return;
       }
 
-      const recipientId = this.recipientId(conversation);
-      const sent = recipientId
-        ? await this.metaSender.sendText(
-            conversation.channel,
-            recipientId,
-            finalText,
-          )
-        : false;
-      if (!sent) {
+      if (!(await this.deliver(conversation, finalText))) {
         this.logger.warn(
           `Yanıt gönderilemedi, personele devrediliyor (${conversationId})`,
         );
@@ -187,9 +283,7 @@ export class AssistantService {
           'bilinmeyen_konu',
           'Asistan yanıtı danışana gönderilemedi',
         );
-        return;
       }
-      await this.saveBotMessage(conversationId, finalText);
     } catch (err) {
       this.logger.error(
         `Asistan yanıtı üretilemedi (${conversationId})`,
@@ -204,6 +298,87 @@ export class AssistantService {
           ),
         );
     }
+  }
+
+  // Medya mesajına LLM ya da bilgi bankası karışmadan yanıt verir.
+  private async runUnsupported(
+    conversation: ConversationWithContact,
+  ): Promise<void> {
+    const conversationId = conversation.id;
+    if (!(await this.isStillBotActive(conversationId))) {
+      return;
+    }
+    const replied = await this.prisma.message.findFirst({
+      where: {
+        conversationId,
+        senderType: SenderType.BOT,
+        content: MEDIA_REPLY,
+      },
+      select: { id: true },
+    });
+    if (replied) {
+      await this.handoffService.handoff(
+        conversationId,
+        'bilinmeyen_konu',
+        MEDIA_HANDOFF_SUMMARY,
+      );
+      return;
+    }
+    if (!(await this.deliver(conversation, MEDIA_REPLY))) {
+      await this.handoffService.handoff(
+        conversationId,
+        'bilinmeyen_konu',
+        'Asistan yanıtı danışana gönderilemedi',
+      );
+    }
+  }
+
+  // Son BOT/AGENT mesajından sonraki danışan mesajlarının birleşimi.
+  private async buildSearchQuery(
+    conversationId: string,
+    latestText: string,
+  ): Promise<string> {
+    const lastReply = await this.prisma.message.findFirst({
+      where: {
+        conversationId,
+        senderType: { in: [SenderType.BOT, SenderType.AGENT] },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const rows = await this.prisma.message.findMany({
+      where: {
+        conversationId,
+        senderType: SenderType.CLIENT,
+        ...(lastReply ? { createdAt: { gt: lastReply.createdAt } } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { content: true },
+    });
+    const texts = rows
+      .map((row) => row.content)
+      .filter((content) => !isUnsupported(content));
+    return texts.length > 0 ? texts.join('\n') : latestText;
+  }
+
+  // Son saatte gönderilen BOT cevabı sınıra ulaştıysa personele devreder.
+  private async reachedReplyLimit(conversationId: string): Promise<boolean> {
+    const count = await this.prisma.message.count({
+      where: {
+        conversationId,
+        senderType: SenderType.BOT,
+        createdAt: { gte: new Date(Date.now() - REPLY_WINDOW_MS) },
+      },
+    });
+    if (count < this.maxRepliesPerHour()) {
+      return false;
+    }
+    await this.handoffService.handoff(
+      conversationId,
+      'bilinmeyen_konu',
+      'Saatlik bot cevap sınırı aşıldı',
+    );
+    return true;
   }
 
   private async runToolLoop(
@@ -305,7 +480,9 @@ export class AssistantService {
     const messages: OpenAiMessage[] = [];
     for (const row of [...rows].reverse()) {
       if (row.senderType === SenderType.CLIENT) {
-        messages.push({ role: 'user', content: row.content });
+        if (!isUnsupported(row.content)) {
+          messages.push({ role: 'user', content: row.content });
+        }
       } else {
         messages.push({ role: 'assistant', content: row.content });
       }
@@ -329,12 +506,43 @@ export class AssistantService {
     messages.push({ role: 'user', content: `${latestText}${suffix}` });
   }
 
+  // Metni kanal sınırına göre bölüp sırayla gönderir. Bir parça başarısız
+  // olursa kalanlar gönderilmez ve false döner.
+  private async deliver(
+    conversation: ConversationWithContact,
+    text: string,
+  ): Promise<boolean> {
+    const recipientId = this.recipientId(conversation);
+    if (!recipientId) {
+      return false;
+    }
+    const parts = splitForChannel(text, this.maxCharsFor(conversation.channel));
+    for (const part of parts) {
+      const res = await this.metaSender.sendText(
+        conversation.channel,
+        recipientId,
+        part,
+      );
+      if (!res.ok) {
+        return false;
+      }
+      await this.saveBotMessage(conversation.id, part, res.messageId);
+    }
+    return true;
+  }
+
   private async saveBotMessage(
     conversationId: string,
     content: string,
+    metaMessageId?: string,
   ): Promise<void> {
     const message = await this.prisma.message.create({
-      data: { conversationId, senderType: SenderType.BOT, content },
+      data: {
+        conversationId,
+        senderType: SenderType.BOT,
+        content,
+        metaMessageId: metaMessageId ?? null,
+      },
     });
     await this.prisma.conversation.update({
       where: { id: conversationId },
@@ -353,13 +561,30 @@ export class AssistantService {
     return null;
   }
 
-  private historyLimit(): number {
-    const raw = Number(
-      this.config.get<string>(
-        'ASSISTANT_HISTORY_LIMIT',
-        String(DEFAULT_HISTORY_LIMIT),
-      ),
+  private maxCharsFor(channel: Channel): number {
+    return channel === Channel.INSTAGRAM
+      ? this.intSetting('INSTAGRAM_MAX_CHARS', DEFAULT_INSTAGRAM_MAX_CHARS, 1)
+      : WHATSAPP_MAX_CHARS;
+  }
+
+  private debounceMs(): number {
+    return this.intSetting('ASSISTANT_DEBOUNCE_MS', DEFAULT_DEBOUNCE_MS, 0);
+  }
+
+  private maxRepliesPerHour(): number {
+    return this.intSetting(
+      'ASSISTANT_MAX_REPLIES_PER_HOUR',
+      DEFAULT_MAX_REPLIES_PER_HOUR,
+      1,
     );
-    return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_HISTORY_LIMIT;
+  }
+
+  private historyLimit(): number {
+    return this.intSetting('ASSISTANT_HISTORY_LIMIT', DEFAULT_HISTORY_LIMIT, 1);
+  }
+
+  private intSetting(key: string, fallback: number, min: number): number {
+    const raw = Number(this.config.get<string>(key, String(fallback)));
+    return Number.isInteger(raw) && raw >= min ? raw : fallback;
   }
 }

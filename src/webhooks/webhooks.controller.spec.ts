@@ -20,14 +20,27 @@ function buildAssistantMock() {
   return { assistant, handleIncoming, handleCrisis };
 }
 
-function buildServiceMock(processResult?: unknown, extracted: unknown[] = []) {
+function buildServiceMock(
+  processResult?: unknown,
+  extracted: unknown[] = [],
+  echoes: unknown[] = [],
+) {
   const extractMessages = jest.fn().mockReturnValue(extracted);
+  const extractInstagramEchoes = jest.fn().mockReturnValue(echoes);
   const processIncomingMessage = jest.fn().mockResolvedValue(processResult);
+  const processInstagramEcho = jest.fn().mockResolvedValue(undefined);
   const service = {
     extractMessages,
+    extractInstagramEchoes,
     processIncomingMessage,
+    processInstagramEcho,
   } as unknown as WebhooksService;
-  return { service, extractMessages, processIncomingMessage };
+  return {
+    service,
+    extractMessages,
+    processIncomingMessage,
+    processInstagramEcho,
+  };
 }
 
 function buildConfigMock(values: Record<string, string>): ConfigService {
@@ -46,6 +59,12 @@ function buildResMock() {
 }
 
 describe('WebhooksController', () => {
+  it('Throttler istek sınırından muaf (@SkipThrottle)', () => {
+    expect(
+      Reflect.getMetadata('THROTTLER:SKIPdefault', WebhooksController),
+    ).toBe(true);
+  });
+
   describe('verify (GET)', () => {
     const config = buildConfigMock({ META_VERIFY_TOKEN: 'secret-token' });
 
@@ -129,6 +148,7 @@ describe('WebhooksController', () => {
       externalContactId: '905550001122',
       metaMessageId: 'wamid.ABC',
       content: 'Merhaba',
+      kind: 'text',
       timestamp: new Date(),
     };
 
@@ -150,7 +170,13 @@ describe('WebhooksController', () => {
     it('geçerli imza ve body ile service doğru mesajlarla çağrılır', async () => {
       const { service, extractMessages, processIncomingMessage } =
         buildServiceMock(
-          { conversationId: 'conv-1', isNew: true, crisis: false },
+          {
+            conversationId: 'conv-1',
+            isNew: true,
+            crisis: false,
+            crisisNew: false,
+            kind: 'text',
+          },
           [normalizedMessage],
         );
       const { assistant, handleIncoming, handleCrisis } = buildAssistantMock();
@@ -160,14 +186,51 @@ describe('WebhooksController', () => {
 
       expect(extractMessages).toHaveBeenCalledWith(JSON.parse(rawBody));
       expect(processIncomingMessage).toHaveBeenCalledWith(normalizedMessage);
-      expect(handleIncoming).toHaveBeenCalledWith('conv-1', 'Merhaba');
+      expect(handleIncoming).toHaveBeenCalledWith('conv-1', 'Merhaba', {
+        kind: 'text',
+      });
       expect(handleCrisis).not.toHaveBeenCalled();
       expect(result).toEqual({ received: true });
     });
 
+    it('medya mesajında handleIncoming kind: unsupported ile çağrılır', async () => {
+      const { service } = buildServiceMock(
+        {
+          conversationId: 'conv-1',
+          isNew: true,
+          crisis: false,
+          crisisNew: false,
+          kind: 'unsupported',
+        },
+        [
+          {
+            ...normalizedMessage,
+            content: '[desteklenmeyen mesaj tipi: audio]',
+            kind: 'unsupported',
+          },
+        ],
+      );
+      const { assistant, handleIncoming } = buildAssistantMock();
+      const controller = new WebhooksController(service, config, assistant);
+
+      await controller.receive(buildValidRequest());
+
+      expect(handleIncoming).toHaveBeenCalledWith(
+        'conv-1',
+        '[desteklenmeyen mesaj tipi: audio]',
+        { kind: 'unsupported' },
+      );
+    });
+
     it('duplicate mesajda assistant çağrılmaz', async () => {
       const { service } = buildServiceMock(
-        { conversationId: 'conv-1', isNew: false, crisis: false },
+        {
+          conversationId: 'conv-1',
+          isNew: false,
+          crisis: false,
+          crisisNew: false,
+          kind: 'text',
+        },
         [normalizedMessage],
       );
       const { assistant, handleIncoming, handleCrisis } = buildAssistantMock();
@@ -179,9 +242,15 @@ describe('WebhooksController', () => {
       expect(handleCrisis).not.toHaveBeenCalled();
     });
 
-    it('kriz işaretli yeni mesajda handleCrisis çağrılır', async () => {
+    it('ilk kriz ifadesinde handleCrisis(conversationId) çağrılır', async () => {
       const { service } = buildServiceMock(
-        { conversationId: 'conv-1', isNew: true, crisis: true },
+        {
+          conversationId: 'conv-1',
+          isNew: true,
+          crisis: true,
+          crisisNew: true,
+          kind: 'text',
+        },
         [normalizedMessage],
       );
       const { assistant, handleIncoming, handleCrisis } = buildAssistantMock();
@@ -191,6 +260,48 @@ describe('WebhooksController', () => {
 
       expect(handleCrisis).toHaveBeenCalledWith('conv-1');
       expect(handleIncoming).not.toHaveBeenCalled();
+    });
+
+    it('aynı konuşmadaki tekrar kriz ifadesinde handleCrisis repeat ile çağrılır', async () => {
+      const { service } = buildServiceMock(
+        {
+          conversationId: 'conv-1',
+          isNew: true,
+          crisis: true,
+          crisisNew: false,
+          kind: 'text',
+        },
+        [normalizedMessage],
+      );
+      const { assistant, handleIncoming, handleCrisis } = buildAssistantMock();
+      const controller = new WebhooksController(service, config, assistant);
+
+      await controller.receive(buildValidRequest());
+
+      expect(handleCrisis).toHaveBeenCalledWith('conv-1', { repeat: true });
+      expect(handleIncoming).not.toHaveBeenCalled();
+    });
+
+    it('Instagram echo’ları fire-and-forget işlenir, asistan çağrılmaz', async () => {
+      const echo = {
+        externalContactId: 'ig-user-1',
+        metaMessageId: 'mid.echo',
+        content: 'Merhaba',
+      };
+      const { service, processInstagramEcho } = buildServiceMock(
+        undefined,
+        [],
+        [echo],
+      );
+      const { assistant, handleIncoming, handleCrisis } = buildAssistantMock();
+      const controller = new WebhooksController(service, config, assistant);
+
+      const result = await controller.receive(buildValidRequest());
+
+      expect(processInstagramEcho).toHaveBeenCalledWith(echo);
+      expect(handleIncoming).not.toHaveBeenCalled();
+      expect(handleCrisis).not.toHaveBeenCalled();
+      expect(result).toEqual({ received: true });
     });
   });
 });

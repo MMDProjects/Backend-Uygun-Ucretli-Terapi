@@ -43,6 +43,7 @@ process.env.JWT_REFRESH_EXPIRES = '7d';
 const CONVERSATION_UUID = 'f6f6f6f6-f6f6-4f6f-8f6f-f6f6f6f6f6f6';
 const LEAD_UUID = 'a7a7a7a7-a7a7-4a7a-8a7a-a7a7a7a7a7a7';
 const QUESTION_UUID = 'b8b8b8b8-b8b8-4b8b-8b8b-b8b8b8b8b8b8';
+const CONTACT_UUID = 'c9c9c9c9-c9c9-4c9c-8c9c-c9c9c9c9c9c9';
 
 describe('Inbox (e2e)', () => {
   let app: INestApplication;
@@ -50,7 +51,7 @@ describe('Inbox (e2e)', () => {
 
   const mailMock = buildMailMock();
   const metaSenderMock = {
-    sendText: jest.fn().mockResolvedValue(true),
+    sendText: jest.fn().mockResolvedValue({ ok: true }),
   };
   const knowledgeMock = {
     createEntry: jest.fn(),
@@ -161,7 +162,7 @@ describe('Inbox (e2e)', () => {
 
   describe('GET /admin/inbox/counts', () => {
     it('ADMIN icin 200 ve sayac alanlarini doner', async () => {
-      prismaMock.$transaction.mockResolvedValue([0, 0, 0, 0, 0]);
+      prismaMock.$transaction.mockResolvedValue([0, 0, 0, 0, 0, 0]);
 
       const res = await request(app.getHttpServer())
         .get('/admin/inbox/counts')
@@ -174,6 +175,86 @@ describe('Inbox (e2e)', () => {
         crisis: 0,
         newLeads: 0,
         openUnanswered: 0,
+      });
+    });
+
+    it('attention, bekleyen personel ve acik kriz sayilarinin toplamidir', async () => {
+      // [open, pendingAgent, crisis, openCrisis, newLeads, openUnanswered]
+      prismaMock.$transaction.mockResolvedValue([2, 3, 2, 1, 4, 5]);
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/inbox/counts')
+        .set('Authorization', bearerHeader(adminToken()))
+        .expect(200);
+
+      expect(res.body).toEqual({
+        open: 2,
+        pendingAgent: 3,
+        crisis: 2,
+        attention: 4,
+        newLeads: 4,
+        openUnanswered: 5,
+      });
+    });
+  });
+
+  describe('PATCH /admin/inbox/contacts/:id', () => {
+    it('WHATSAPP kisinin telefonu degistirilirse 400 doner', async () => {
+      prismaMock.contact.findUnique.mockResolvedValue({
+        id: CONTACT_UUID,
+        channel: 'WHATSAPP',
+        phone: '905321234567',
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/admin/inbox/contacts/${CONTACT_UUID}`)
+        .set('Authorization', bearerHeader(adminToken()))
+        .send({ phone: '905439876543' })
+        .expect(400);
+
+      expect(prismaMock.contact.update).not.toHaveBeenCalled();
+    });
+
+    it('WHATSAPP kisinin ayni telefonu gonderilirse 200 doner', async () => {
+      prismaMock.contact.findUnique.mockResolvedValue({
+        id: CONTACT_UUID,
+        channel: 'WHATSAPP',
+        phone: '905321234567',
+      });
+      prismaMock.contact.update.mockResolvedValue({
+        id: CONTACT_UUID,
+        channel: 'WHATSAPP',
+        phone: '905321234567',
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/admin/inbox/contacts/${CONTACT_UUID}`)
+        .set('Authorization', bearerHeader(adminToken()))
+        .send({ phone: '905321234567' })
+        .expect(200);
+    });
+
+    it('INSTAGRAM kisinin telefonu degistirilebilir ve 200 doner', async () => {
+      prismaMock.contact.findUnique.mockResolvedValue({
+        id: CONTACT_UUID,
+        channel: 'INSTAGRAM',
+        phone: null,
+      });
+      prismaMock.contact.update.mockResolvedValue({
+        id: CONTACT_UUID,
+        channel: 'INSTAGRAM',
+        phone: '05439876543',
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/admin/inbox/contacts/${CONTACT_UUID}`)
+        .set('Authorization', bearerHeader(adminToken()))
+        .send({ phone: '05439876543' })
+        .expect(200);
+
+      expect(prismaMock.contact.update).toHaveBeenCalledWith({
+        where: { id: CONTACT_UUID },
+        data: { phone: '05439876543' },
       });
     });
   });

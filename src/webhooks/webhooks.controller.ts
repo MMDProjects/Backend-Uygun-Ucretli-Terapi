@@ -15,14 +15,24 @@ import {
 import { ApiTags, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator';
 import { verifyHmacSha256Signature, parseAppSecrets } from './crypto';
-import { WebhooksService } from './webhooks.service';
+import { MessageKind, WebhooksService } from './webhooks.service';
 import { AssistantService } from '../assistant/assistant.service';
 import { MetaWebhookBody } from './dto/meta-webhook-payload.dto';
 
+interface PendingAssistantTask {
+  conversationId: string;
+  content: string;
+  kind: MessageKind;
+  crisis: boolean;
+  crisisNew: boolean;
+}
+
 @ApiTags('webhooks')
 @Public()
+@SkipThrottle()
 @Controller('webhooks/meta')
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
@@ -70,27 +80,22 @@ export class WebhooksController {
     const body = req.body as MetaWebhookBody;
     const messages = this.webhooksService.extractMessages(body);
 
-    const newConversations: {
-      conversationId: string;
-      crisis: boolean;
-      content: string;
-    }[] = [];
+    const pending: PendingAssistantTask[] = [];
     for (const msg of messages) {
       const outcome = await this.webhooksService.processIncomingMessage(msg);
       if (outcome?.isNew) {
-        newConversations.push({
+        pending.push({
           conversationId: outcome.conversationId,
-          crisis: outcome.crisis,
           content: msg.content,
+          kind: outcome.kind,
+          crisis: outcome.crisis,
+          crisisNew: outcome.crisisNew,
         });
       }
     }
 
-    for (const item of newConversations) {
-      const task = item.crisis
-        ? this.assistant.handleCrisis(item.conversationId)
-        : this.assistant.handleIncoming(item.conversationId, item.content);
-      void task.catch((err) =>
+    for (const item of pending) {
+      void this.dispatchAssistant(item).catch((err) =>
         this.logger.error(
           `Asistan görevi başarısız (${item.conversationId})`,
           err,
@@ -98,6 +103,29 @@ export class WebhooksController {
       );
     }
 
+    // Echo işleme yanıtı beklemez; hata yalnızca loglanır.
+    for (const echo of this.webhooksService.extractInstagramEchoes(body)) {
+      void this.webhooksService
+        .processInstagramEcho(echo)
+        .catch((err) =>
+          this.logger.error(
+            `Instagram echo işlenemedi (${echo.metaMessageId})`,
+            err,
+          ),
+        );
+    }
+
     return { received: true };
+  }
+
+  private dispatchAssistant(item: PendingAssistantTask): Promise<void> {
+    if (!item.crisis) {
+      return this.assistant.handleIncoming(item.conversationId, item.content, {
+        kind: item.kind,
+      });
+    }
+    return item.crisisNew
+      ? this.assistant.handleCrisis(item.conversationId)
+      : this.assistant.handleCrisis(item.conversationId, { repeat: true });
   }
 }

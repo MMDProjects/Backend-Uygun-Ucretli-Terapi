@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { WebhooksService } from './webhooks.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
@@ -18,9 +19,24 @@ function buildPrismaMock() {
     },
     message: {
       create: jest.fn<any, any>(),
+      findUnique: jest.fn<any, any>(),
+      findFirst: jest.fn<any, any>(),
+      update: jest.fn<any, any>(),
     },
   };
 }
+
+function buildConfigMock(values: Record<string, string> = {}) {
+  return {
+    get: jest.fn((key: string) => values[key]),
+  } as unknown as ConfigService;
+}
+
+const P2002 = () =>
+  new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+  });
 
 describe('WebhooksService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
@@ -33,6 +49,7 @@ describe('WebhooksService', () => {
     service = new WebhooksService(
       prisma as unknown as PrismaService,
       inboxEvents as unknown as InboxEventsService,
+      buildConfigMock(),
     );
   });
 
@@ -80,6 +97,7 @@ describe('WebhooksService', () => {
         contactName: 'Ayşe',
         metaMessageId: 'wamid.ABC',
         content: 'Merhaba',
+        kind: 'text',
       });
     });
 
@@ -116,6 +134,7 @@ describe('WebhooksService', () => {
       const result = service.extractMessages(body);
 
       expect(result[0].content).toBe('[desteklenmeyen mesaj tipi: image]');
+      expect(result[0].kind).toBe('unsupported');
     });
 
     it('Instagram messaging payload’ından mesajları doğru çıkarır', () => {
@@ -144,10 +163,11 @@ describe('WebhooksService', () => {
         externalContactId: 'ig-user-1',
         metaMessageId: 'mid.123',
         content: 'Merhaba Instagram',
+        kind: 'text',
       });
     });
 
-    it('is_echo: true olan Instagram mesajını atlar', () => {
+    it('Instagram metin dışı mesajı unsupported olarak işaretler', () => {
       const body: MetaWebhookBody = {
         object: 'instagram',
         entry: [
@@ -157,6 +177,32 @@ describe('WebhooksService', () => {
               {
                 sender: { id: 'ig-user-1' },
                 recipient: { id: 'ig-page-1' },
+                timestamp: 1700000000000,
+                message: { mid: 'mid.img' },
+              },
+            ],
+          },
+        ],
+      };
+
+      const result = service.extractMessages(body);
+
+      expect(result[0]).toMatchObject({
+        kind: 'unsupported',
+        content: '[desteklenmeyen mesaj tipi]',
+      });
+    });
+
+    it('is_echo: true olan Instagram mesajını gelen mesaj olarak atlar', () => {
+      const body: MetaWebhookBody = {
+        object: 'instagram',
+        entry: [
+          {
+            id: 'entry-1',
+            messaging: [
+              {
+                sender: { id: 'ig-page-1' },
+                recipient: { id: 'ig-user-1' },
                 timestamp: 1700000000000,
                 message: {
                   mid: 'mid.echo',
@@ -169,9 +215,42 @@ describe('WebhooksService', () => {
         ],
       };
 
-      const result = service.extractMessages(body);
+      expect(service.extractMessages(body)).toHaveLength(0);
+    });
+  });
 
-      expect(result).toHaveLength(0);
+  describe('extractInstagramEchoes', () => {
+    it('echo mesajlarını danışan (recipient) kimliğiyle çıkarır', () => {
+      const body: MetaWebhookBody = {
+        object: 'instagram',
+        entry: [
+          {
+            id: 'entry-1',
+            messaging: [
+              {
+                sender: { id: 'ig-page-1' },
+                recipient: { id: 'ig-user-1' },
+                timestamp: 1700000000000,
+                message: { mid: 'mid.echo', text: 'Merhaba', is_echo: true },
+              },
+              {
+                sender: { id: 'ig-user-1' },
+                recipient: { id: 'ig-page-1' },
+                timestamp: 1700000000000,
+                message: { mid: 'mid.in', text: 'Selam' },
+              },
+            ],
+          },
+        ],
+      };
+
+      expect(service.extractInstagramEchoes(body)).toEqual([
+        {
+          externalContactId: 'ig-user-1',
+          metaMessageId: 'mid.echo',
+          content: 'Merhaba',
+        },
+      ]);
     });
   });
 
@@ -218,6 +297,7 @@ describe('WebhooksService', () => {
       contactName: 'Ayşe',
       metaMessageId: 'wamid.ABC',
       content: 'Merhaba',
+      kind: 'text' as const,
       timestamp: new Date(),
     };
 
@@ -249,7 +329,7 @@ describe('WebhooksService', () => {
       });
     });
 
-    it('yeni mesajın id’sini sonuçta döner', async () => {
+    it('yeni mesajın id’sini ve kind’ını sonuçta döner', async () => {
       prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
       prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
       prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
@@ -257,10 +337,11 @@ describe('WebhooksService', () => {
       prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
 
       await expect(
-        service.processIncomingMessage(baseMsg),
+        service.processIncomingMessage({ ...baseMsg, kind: 'unsupported' }),
       ).resolves.toMatchObject({
         isNew: true,
         messageId: 'msg-9',
+        kind: 'unsupported',
       });
     });
 
@@ -281,16 +362,112 @@ describe('WebhooksService', () => {
       );
     });
 
+    it('PENDING_AGENT konuşma kapanmamış sayılır ve yeniden kullanılır', async () => {
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue({
+        id: 'conv-pending',
+        status: 'PENDING_AGENT',
+      });
+      prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-pending' });
+
+      await service.processIncomingMessage(baseMsg);
+
+      expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contactId: 'contact-1',
+            channel: 'WHATSAPP',
+            status: { in: ['OPEN', 'PENDING_AGENT'] },
+          }),
+        }),
+      );
+      expect(prisma.conversation.create).not.toHaveBeenCalled();
+      expect(prisma.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ conversationId: 'conv-pending' }),
+        }),
+      );
+    });
+
+    it('CLOSED konuşmadan sonra yeni konuşma açılır', async () => {
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      // Kapanmış konuşma sorguya girmez; aktif arama boş döner.
+      prisma.conversation.findFirst.mockResolvedValue(null);
+      prisma.conversation.create.mockResolvedValue({ id: 'conv-new' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-new' });
+
+      await service.processIncomingMessage(baseMsg);
+
+      expect(prisma.conversation.create).toHaveBeenCalledWith({
+        data: { contactId: 'contact-1', channel: 'WHATSAPP' },
+      });
+    });
+
+    it('son 30 gün içinde kriz işaretli konuşma varsa yeni konuşma bot kapalı açılır', async () => {
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst
+        .mockResolvedValueOnce(null) // aktif konuşma yok
+        .mockResolvedValueOnce({ id: 'conv-old' }); // kilit: kriz işaretli
+      prisma.conversation.create.mockResolvedValue({ id: 'conv-new' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-new' });
+
+      const before = Date.now();
+      await service.processIncomingMessage(baseMsg);
+      const after = Date.now();
+
+      expect(prisma.conversation.create).toHaveBeenCalledWith({
+        data: {
+          contactId: 'contact-1',
+          channel: 'WHATSAPP',
+          isBotActive: false,
+          status: 'PENDING_AGENT',
+          flaggedCrisis: true,
+          handoffReason: 'acil_durum',
+          handoffSummary: 'Önceki konuşmada kriz işareti vardı',
+          handedOffAt: expect.any(Date),
+        },
+      });
+      const lockQuery = prisma.conversation.findFirst.mock.calls[1][0];
+      const dayMs = 24 * 60 * 60 * 1000;
+      const since = lockQuery.where.lastMessageAt.gte as Date;
+      expect(since.getTime()).toBeGreaterThanOrEqual(before - 30 * dayMs);
+      expect(since.getTime()).toBeLessThanOrEqual(after - 30 * dayMs);
+    });
+
+    it('kilit süresi ASSISTANT_CRISIS_LOCK_DAYS ile değiştirilebilir', async () => {
+      service = new WebhooksService(
+        prisma as unknown as PrismaService,
+        inboxEvents as unknown as InboxEventsService,
+        buildConfigMock({ ASSISTANT_CRISIS_LOCK_DAYS: '7' }),
+      );
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue(null);
+      prisma.conversation.create.mockResolvedValue({ id: 'conv-new' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-new' });
+
+      const before = Date.now();
+      await service.processIncomingMessage(baseMsg);
+
+      const lockQuery = prisma.conversation.findFirst.mock.calls[1][0];
+      const since = lockQuery.where.lastMessageAt.gte as Date;
+      const dayMs = 24 * 60 * 60 * 1000;
+      expect(since.getTime()).toBeGreaterThanOrEqual(before - 7 * dayMs);
+      expect(since.getTime()).toBeLessThanOrEqual(Date.now() - 7 * dayMs);
+    });
+
     it('duplicate metaMessageId geldiğinde sessizce döner, hata fırlatmaz', async () => {
       prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
       prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
       prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
-      prisma.message.create.mockRejectedValue(
-        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-          code: 'P2002',
-          clientVersion: 'test',
-        }),
-      );
+      prisma.message.create.mockRejectedValue(P2002());
 
       await expect(
         service.processIncomingMessage(baseMsg),
@@ -298,6 +475,7 @@ describe('WebhooksService', () => {
         conversationId: 'conv-1',
         isNew: false,
         crisis: false,
+        crisisNew: false,
         messageId: null,
       });
       expect(prisma.conversation.update).not.toHaveBeenCalled();
@@ -315,10 +493,13 @@ describe('WebhooksService', () => {
       );
     });
 
-    it('kriz kelimesi içeren mesajda botu durdurur ve işaretler', async () => {
+    it('kriz kelimesi içeren mesajda konuşmayı devreder ve işaretler', async () => {
       prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
       prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
-      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      prisma.conversation.findFirst.mockResolvedValue({
+        id: 'conv-1',
+        flaggedCrisis: false,
+      });
       prisma.message.create.mockResolvedValue({ id: 'msg-1' });
       prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
 
@@ -329,13 +510,193 @@ describe('WebhooksService', () => {
 
       expect(prisma.conversation.update).toHaveBeenCalledWith({
         where: { id: 'conv-1' },
-        data: { isBotActive: false, flaggedCrisis: true },
+        data: {
+          lastMessageAt: expect.any(Date),
+          isBotActive: false,
+          status: 'PENDING_AGENT',
+          flaggedCrisis: true,
+          handoffReason: 'acil_durum',
+          handoffSummary: 'Mesajda kriz ifadesi tespit edildi',
+          handedOffAt: expect.any(Date),
+        },
       });
       expect(result).toMatchObject({
         conversationId: 'conv-1',
         isNew: true,
         crisis: true,
+        crisisNew: true,
       });
+      expect(inboxEvents.emit).toHaveBeenCalledWith('conversation.updated', {
+        conversationId: 'conv-1',
+      });
+      expect(inboxEvents.emit).toHaveBeenCalledWith('counts.changed', {});
+    });
+
+    it('konuşma zaten kriz işaretliyse crisisNew false döner', async () => {
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue({
+        id: 'conv-1',
+        flaggedCrisis: true,
+      });
+      prisma.message.create.mockResolvedValue({ id: 'msg-2' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+
+      await expect(
+        service.processIncomingMessage({
+          ...baseMsg,
+          content: 'yine kendimi öldürmek istiyorum',
+        }),
+      ).resolves.toMatchObject({ crisis: true, crisisNew: false });
+    });
+
+    it('kriz olmayan mesajda konuşma devralınmaz', async () => {
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+
+      const result = await service.processIncomingMessage(baseMsg);
+
+      expect(prisma.conversation.update).toHaveBeenCalledWith({
+        where: { id: 'conv-1' },
+        data: { lastMessageAt: expect.any(Date) },
+      });
+      expect(result).toMatchObject({ crisis: false, crisisNew: false });
+    });
+  });
+
+  describe('processInstagramEcho', () => {
+    const echo = {
+      externalContactId: 'ig-user-1',
+      metaMessageId: 'mid.echo',
+      content: 'Merhaba, randevunuz onaylandı',
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    // Bekleme süresini sahte zamanlayıcıyla ilerletip işlemi tamamlar.
+    async function runEcho(value = echo) {
+      const pending = service.processInstagramEcho(value);
+      await jest.advanceTimersByTimeAsync(5000);
+      await pending;
+    }
+
+    it('kimliği bizde kayıtlıysa bekleme yapmadan atlar', async () => {
+      prisma.message.findUnique.mockResolvedValue({ id: 'msg-bot' });
+
+      await service.processInstagramEcho(echo);
+
+      expect(prisma.message.create).not.toHaveBeenCalled();
+      expect(prisma.contact.findFirst).not.toHaveBeenCalled();
+      expect(inboxEvents.emit).not.toHaveBeenCalled();
+    });
+
+    it('kayıt 5 sn sonra gelirse ikinci kontrolde atlar', async () => {
+      prisma.message.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'msg-late' });
+
+      await runEcho();
+
+      expect(prisma.message.findUnique).toHaveBeenCalledTimes(2);
+      expect(prisma.message.create).not.toHaveBeenCalled();
+      expect(prisma.message.update).not.toHaveBeenCalled();
+    });
+
+    it('aynı metinli, kimliksiz bot mesajı varsa kimliği ona bağlar', async () => {
+      prisma.message.findUnique.mockResolvedValue(null);
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      prisma.message.findFirst.mockResolvedValue({ id: 'msg-bot' });
+      prisma.message.update.mockResolvedValue({ id: 'msg-bot' });
+
+      await runEcho();
+
+      expect(prisma.message.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            conversationId: 'conv-1',
+            senderType: { in: ['BOT', 'AGENT'] },
+            content: echo.content,
+            metaMessageId: null,
+          }),
+        }),
+      );
+      expect(prisma.message.update).toHaveBeenCalledWith({
+        where: { id: 'msg-bot' },
+        data: { metaMessageId: 'mid.echo' },
+      });
+      expect(prisma.message.create).not.toHaveBeenCalled();
+      expect(inboxEvents.emit).not.toHaveBeenCalled();
+    });
+
+    it('eşleşme yoksa sistem dışı gönderimi personel mesajı olarak kaydeder ve devralır', async () => {
+      prisma.message.findUnique.mockResolvedValue(null);
+      prisma.contact.findFirst.mockResolvedValue(null);
+      prisma.contact.create.mockResolvedValue({ id: 'contact-2' });
+      prisma.conversation.findFirst.mockResolvedValue(null);
+      prisma.conversation.create.mockResolvedValue({ id: 'conv-2' });
+      prisma.message.findFirst.mockResolvedValue(null);
+      prisma.message.create.mockResolvedValue({ id: 'msg-agent' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-2' });
+
+      await runEcho();
+
+      expect(prisma.contact.create).toHaveBeenCalledWith({
+        data: {
+          instagramId: 'ig-user-1',
+          fullName: undefined,
+          channel: 'INSTAGRAM',
+        },
+      });
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: {
+          conversationId: 'conv-2',
+          senderType: 'AGENT',
+          agentUserId: null,
+          externalSource: 'instagram_app',
+          content: echo.content,
+          metaMessageId: 'mid.echo',
+        },
+      });
+      expect(prisma.conversation.update).toHaveBeenCalledWith({
+        where: { id: 'conv-2' },
+        data: {
+          lastMessageAt: expect.any(Date),
+          isBotActive: false,
+          status: 'PENDING_AGENT',
+        },
+      });
+      expect(inboxEvents.emit).toHaveBeenCalledWith('message.created', {
+        conversationId: 'conv-2',
+        message: { id: 'msg-agent' },
+      });
+      expect(inboxEvents.emit).toHaveBeenCalledWith('conversation.updated', {
+        conversationId: 'conv-2',
+      });
+      expect(inboxEvents.emit).toHaveBeenCalledWith('counts.changed', {});
+    });
+
+    it('eşzamanlı kayıt P2002 verirse sessizce döner', async () => {
+      prisma.message.findUnique.mockResolvedValue(null);
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      prisma.message.findFirst.mockResolvedValue(null);
+      prisma.message.create.mockRejectedValue(P2002());
+
+      await expect(runEcho()).resolves.toBeUndefined();
+      expect(prisma.conversation.update).not.toHaveBeenCalled();
+      expect(inboxEvents.emit).not.toHaveBeenCalled();
     });
   });
 });

@@ -5,6 +5,14 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Request } from 'express';
 
+// ?token= yalnızca SSE akışları için (EventSource başlık gönderemez)
+export function tokenFromStreamQuery(req: Request): string | null {
+  const pathname = (req?.originalUrl ?? req?.url ?? '').split('?')[0];
+  if (!pathname.endsWith('/stream')) return null;
+  const token = req?.query?.token;
+  return typeof token === 'string' ? token : null;
+}
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
@@ -14,7 +22,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
-        (req: Request) => req?.query?.token as string | null,
+        tokenFromStreamQuery,
       ]),
       secretOrKey: config.get<string>('JWT_ACCESS_SECRET')!,
     });

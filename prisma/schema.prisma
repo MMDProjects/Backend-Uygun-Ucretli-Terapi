@@ -437,15 +437,18 @@ model Contact {
 }
 
 model Conversation {
-  id            String             @id @default(uuid())
-  contactId     String
-  contact       Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  channel       Channel
-  isBotActive   Boolean            @default(true)
-  status        ConversationStatus @default(OPEN)
-  flaggedCrisis Boolean            @default(false)
-  createdAt     DateTime           @default(now())
-  lastMessageAt DateTime           @default(now())
+  id             String             @id @default(uuid())
+  contactId      String
+  contact        Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel        Channel
+  isBotActive    Boolean            @default(true)
+  status         ConversationStatus @default(OPEN)
+  flaggedCrisis  Boolean            @default(false)
+  handoffReason  String?
+  handoffSummary String?
+  handedOffAt    DateTime?
+  createdAt      DateTime           @default(now())
+  lastMessageAt  DateTime           @default(now())
 
   messages            Message[]
   leads               Lead[]
@@ -464,6 +467,7 @@ model Message {
   metaMessageId  String?      @unique
   agentUserId    String?
   agentUser      User?        @relation(fields: [agentUserId], references: [id], onDelete: SetNull)
+  externalSource String?
   createdAt      DateTime     @default(now())
 
   @@index([conversationId])

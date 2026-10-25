@@ -13,6 +13,19 @@ export type HandoffReason =
   | 'bilinmeyen_konu'
   | 'acil_durum';
 
+export const REASON_LABELS: Record<HandoffReason, string> = {
+  randevu_degisiklik: 'Randevu değişikliği',
+  paket_sorusu: 'Paket sorusu',
+  sikayet: 'Şikayet',
+  yetkili_talebi: 'Yetkili talebi',
+  konum_idari: 'Konum/idari',
+  bilinmeyen_konu: 'Bilinmeyen konu',
+  acil_durum: 'Acil durum',
+};
+
+const MAX_SUMMARY_CHARS = 1000;
+const NOTIFY_SUMMARY_CHARS = 120;
+
 @Injectable()
 export class HandoffService {
   constructor(
@@ -24,26 +37,42 @@ export class HandoffService {
   async handoff(
     conversationId: string,
     reason: HandoffReason,
-    // Elif'in devir özeti henüz saklanmıyor; inbox'ta gösterilmesi ayrı iş.
-    _summary: string,
+    summary: string,
   ): Promise<void> {
     const isCrisis = reason === 'acil_durum';
+    const trimmed = summary.trim();
+    const savedSummary = trimmed ? trimmed.slice(0, MAX_SUMMARY_CHARS) : null;
 
-    await this.prisma.conversation.update({
+    const conversation = await this.prisma.conversation.update({
       where: { id: conversationId },
       data: {
         isBotActive: false,
         status: ConversationStatus.PENDING_AGENT,
+        handoffReason: reason,
+        handoffSummary: savedSummary,
+        handedOffAt: new Date(),
         ...(isCrisis ? { flaggedCrisis: true } : {}),
+      },
+      include: {
+        contact: { select: { fullName: true, phone: true, instagramId: true } },
       },
     });
 
     this.inboxEvents.emit('conversation.updated', { conversationId });
     this.inboxEvents.emit('counts.changed', {});
 
+    const contact = conversation?.contact;
+    const who =
+      contact?.fullName ??
+      contact?.phone ??
+      contact?.instagramId ??
+      'Bilinmeyen kişi';
+    const shortSummary = trimmed.slice(0, NOTIFY_SUMMARY_CHARS);
+    const message = `Asistan devri (${REASON_LABELS[reason]}): ${who}${
+      shortSummary ? ` — ${shortSummary}` : ''
+    }`;
+
     const type: NotificationType = isCrisis ? 'DANGER_PANIC' : 'WARNING';
-    await this.notifications
-      .notifyAdmins(type, `Asistan devri: ${reason}`)
-      .catch(() => {});
+    await this.notifications.notifyAdmins(type, message).catch(() => {});
   }
 }
