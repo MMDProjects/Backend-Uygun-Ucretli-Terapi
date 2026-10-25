@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -16,6 +17,8 @@ import { ListConversationsQueryDto } from './dto/list-conversations.query.dto';
 import { ListMessagesQueryDto } from './dto/list-messages.query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
+import { AssignConversationDto } from './dto/assign-conversation.dto';
+import { SearchMessagesQueryDto } from './dto/search-messages.query.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -27,8 +30,16 @@ export class InboxController {
   constructor(private readonly inboxService: InboxService) {}
 
   @Get('conversations')
-  listConversations(@Query() query: ListConversationsQueryDto) {
-    return this.inboxService.listConversations(query);
+  listConversations(
+    @Query() query: ListConversationsQueryDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.inboxService.listConversations(query, user.id);
+  }
+
+  @Get('search')
+  searchMessages(@Query() query: SearchMessagesQueryDto) {
+    return this.inboxService.searchMessages(query.q);
   }
 
   @Get('conversations/:id')
@@ -54,8 +65,27 @@ export class InboxController {
   }
 
   @Post('conversations/:id/takeover')
-  takeover(@Param('id', ParseUUIDPipe) id: string) {
-    return this.inboxService.takeover(id);
+  takeover(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.inboxService.takeover(id, user.id);
+  }
+
+  @Post('conversations/:id/assign')
+  assignConversation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignConversationDto,
+  ) {
+    return this.inboxService.assignConversation(id, dto.userId);
+  }
+
+  @Post('conversations/:id/read')
+  markRead(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.inboxService.markRead(id, user.id);
   }
 
   @Post('conversations/:id/handback')
@@ -76,9 +106,14 @@ export class InboxController {
     return this.inboxService.updateContact(id, dto);
   }
 
+  @Delete('contacts/:id/summary')
+  deleteContactSummary(@Param('id', ParseUUIDPipe) id: string) {
+    return this.inboxService.deleteContactSummary(id);
+  }
+
   @Get('counts')
-  getCounts() {
-    return this.inboxService.getCounts();
+  getCounts(@CurrentUser() user: { id: string }) {
+    return this.inboxService.getCounts(user.id);
   }
 
   @Sse('stream')

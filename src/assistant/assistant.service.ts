@@ -28,6 +28,7 @@ import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { CRISIS_MESSAGE } from './crisis-message';
 import { AssistantSettingsService } from './assistant-settings.service';
 import { CrisisAlertService } from './crisis-alert.service';
+import { PromptVersionsService } from './prompt-versions.service';
 
 const MAX_TOOL_TURNS = 3;
 const DEFAULT_HISTORY_LIMIT = 20;
@@ -174,6 +175,7 @@ export class AssistantService {
     private readonly inboxEvents: InboxEventsService,
     private readonly settings: AssistantSettingsService,
     private readonly crisisAlert: CrisisAlertService,
+    private readonly promptVersions: PromptVersionsService,
   ) {}
 
   // Cevabı hemen üretmez; süre dolunca tek tur çalıştırır.
@@ -554,15 +556,18 @@ export class AssistantService {
     latestText: string;
     tags: string;
     contactBlock: string | null;
+    promptOverride?: string;
   }): Promise<OpenAiMessage[]> {
     const priceTable = await this.promptBuilder.buildPriceTable();
+    const template =
+      input.promptOverride ?? (await this.promptVersions.getActiveContent());
     const knowledgeBlock = this.promptBuilder.buildKnowledgeContext(
       input.search.items,
     );
     const messages: OpenAiMessage[] = [
       {
         role: 'system',
-        content: `${this.promptBuilder.buildSystemPrompt(priceTable)}\n\n${knowledgeBlock}`,
+        content: `${this.promptBuilder.buildSystemPrompt(priceTable, template)}\n\n${knowledgeBlock}`,
       },
     ];
     if (input.contactBlock) {
@@ -581,6 +586,8 @@ export class AssistantService {
       return await buildContactContext(this.prisma, conversation, {
         includeNotes:
           this.config.get<string>('ASSISTANT_INCLUDE_CONTACT_NOTES') === 'true',
+        includeSummary:
+          this.config.get<string>('ASSISTANT_CONVERSATION_SUMMARY') === 'true',
       });
     } catch (err) {
       this.logger.error(
@@ -592,7 +599,11 @@ export class AssistantService {
   }
 
   // "Elif'e sor" önizlemesi: kayıt, gönderim ve araç çalıştırma yok; geçmiş ve kişi bilgisi yok.
-  async previewReply(message: string): Promise<AssistantPreview> {
+  // promptOverride verilirse aktif prompt yerine o metin kullanılır (panel "Dene").
+  async previewReply(
+    message: string,
+    opts?: { promptOverride?: string },
+  ): Promise<AssistantPreview> {
     const { query, search } = await this.searchKnowledge(message, []);
     const messages = await this.buildMessages({
       search,
@@ -600,6 +611,7 @@ export class AssistantService {
       latestText: message,
       tags: this.promptBuilder.buildNowTag(new Date()),
       contactBlock: null,
+      promptOverride: opts?.promptOverride,
     });
     const { text, calls } = await this.runToolLoop(null, messages, {
       shadow: true,

@@ -4,12 +4,16 @@ import { InboxEventsModule } from '../inbox-events/inbox-events.module';
 import { AppointmentsAdminController } from './appointments-admin.controller';
 import { AssistantPreviewController } from './assistant-preview.controller';
 import { AppointmentsAdminService } from './appointments-admin.service';
+import { CannedResponsesController } from './canned-responses.controller';
+import { CannedResponsesService } from './canned-responses.service';
 import { InboxController } from './inbox.controller';
 import { InboxService } from './inbox.service';
 import { KnowledgeAdminController } from './knowledge-admin.controller';
 import { KnowledgeAdminService } from './knowledge-admin.service';
 import { LeadsAdminController } from './leads-admin.controller';
 import { LeadsAdminService } from './leads-admin.service';
+import { TagsController } from './tags.controller';
+import { TagsService } from './tags.service';
 import { UnansweredAdminController } from './unanswered-admin.controller';
 
 @Module({
@@ -21,12 +25,16 @@ import { UnansweredAdminController } from './unanswered-admin.controller';
     KnowledgeAdminController,
     AppointmentsAdminController,
     AssistantPreviewController,
+    TagsController,
+    CannedResponsesController,
   ],
   providers: [
     InboxService,
     LeadsAdminService,
     KnowledgeAdminService,
     AppointmentsAdminService,
+    TagsService,
+    CannedResponsesService,
   ],
 })
 export class InboxModule {}

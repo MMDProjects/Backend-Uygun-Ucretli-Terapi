@@ -84,16 +84,20 @@ model User {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  expertProfile  ExpertProfile?
-  favorites      Favorite[]
-  testResults    TestResult[]
-  comments       Comment[]
-  tokens         RefreshToken[]
-  forumQuestions ForumQuestion[]
-  expertRequests ExpertRequest[]
-  notifications  Notification[]
-  contact        Contact?
-  agentMessages  Message[]
+  expertProfile         ExpertProfile?
+  favorites             Favorite[]
+  testResults           TestResult[]
+  comments              Comment[]
+  tokens                RefreshToken[]
+  forumQuestions        ForumQuestion[]
+  expertRequests        ExpertRequest[]
+  notifications         Notification[]
+  contact               Contact?
+  agentMessages         Message[]
+  assignedConversations Conversation[]     @relation("ConversationAssignee")
+  conversationReads     ConversationRead[]
+  cannedResponses       CannedResponse[]   @relation("CannedResponseCreator")
+  assistantPrompts      AssistantPrompt[]  @relation("AssistantPromptCreator")
 
   @@map("users")
 }
@@ -181,6 +185,7 @@ model Availability {
   startTime        String
   endTime          String
   isBlockedByAdmin Boolean       @default(false)
+  appointment      Appointment?
 
   @@unique([expertProfileId, date, startTime])
   @@map("availabilities")
@@ -431,23 +436,27 @@ enum SenderType {
 }
 
 model Contact {
-  id           String      @id @default(uuid())
-  phone        String?     @unique
-  instagramId  String?     @unique
-  fullName     String?
-  age          Int?
-  notes        String?     @db.Text
-  channel      Channel
-  createdAt    DateTime    @default(now())
-  lastActiveAt DateTime    @default(now())
-  contactType  ContactType @default(DANISAN)
-  noticeSentAt DateTime?
+  id              String           @id @default(uuid())
+  phone           String?          @unique
+  instagramId     String?          @unique
+  fullName        String?
+  age             Int?
+  notes           String?          @db.Text
+  channel         Channel
+  createdAt       DateTime         @default(now())
+  lastActiveAt    DateTime         @default(now())
+  contactType     ContactType      @default(DANISAN)
+  noticeSentAt    DateTime?
+  lifecycleStatus ContactLifecycle @default(POTANSIYEL)
+  lastSummary     String?          @db.Text
+  lastSummaryAt   DateTime?
 
   conversations Conversation[]
   userId        String?        @unique
   user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   appointments  Appointment[]
   leads         Lead[]
+  tags          ContactTag[]
 
   @@map("contacts")
 }
@@ -463,14 +472,19 @@ model Conversation {
   handoffReason  String?
   handoffSummary String?
   handedOffAt    DateTime?
+  assignedUserId String?
+  assignedUser   User?              @relation("ConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt     DateTime?
   createdAt      DateTime           @default(now())
   lastMessageAt  DateTime           @default(now())
 
   messages            Message[]
   leads               Lead[]
   unansweredQuestions UnansweredQuestion[]
+  reads               ConversationRead[]
 
   @@index([contactId])
+  @@index([assignedUserId])
   @@map("conversations")
 }
 
@@ -587,6 +601,7 @@ enum AppointmentStatus {
   SCHEDULED
   COMPLETED
   CANCELLED
+  NO_SHOW
 }
 
 enum PaymentStatus {
@@ -607,10 +622,66 @@ model Appointment {
   status          AppointmentStatus @default(SCHEDULED)
   paymentStatus   PaymentStatus     @default(PENDING)
   roomToken       String            @unique
+  availabilityId  String?           @unique
+  availability    Availability?     @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
   @@index([therapistId, scheduledAt])
   @@index([contactId])
   @@map("appointments")
+}
+
+enum ContactLifecycle {
+  POTANSIYEL
+  DANISAN
+  PASIF
+}
+
+model ContactTag {
+  id        String    @id @default(uuid())
+  name      String    @unique @db.VarChar(40)
+  color     String    @default("gray")
+  createdAt DateTime  @default(now())
+  contacts  Contact[]
+
+  @@map("contact_tags")
+}
+
+model ConversationRead {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime     @default(now())
+
+  @@unique([userId, conversationId])
+  @@map("conversation_reads")
+}
+
+model CannedResponse {
+  id          String   @id @default(uuid())
+  title       String   @db.VarChar(80)
+  content     String   @db.Text
+  shortcut    String?  @unique @db.VarChar(30)
+  createdById String?
+  createdBy   User?    @relation("CannedResponseCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("canned_responses")
+}
+
+model AssistantPrompt {
+  id          String   @id @default(uuid())
+  version     Int      @unique
+  content     String   @db.Text
+  note        String?  @db.VarChar(200)
+  isActive    Boolean  @default(false)
+  createdById String?
+  createdBy   User?    @relation("AssistantPromptCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@map("assistant_prompts")
 }

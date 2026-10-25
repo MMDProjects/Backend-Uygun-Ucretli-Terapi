@@ -11,6 +11,7 @@ import {
 import { Roles } from '../common/decorators/roles.decorator';
 import { AppointmentsAdminService } from './appointments-admin.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { ListAppointmentsQueryDto } from './dto/list-appointments.query.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 
 @Roles('ADMIN')
@@ -19,13 +20,8 @@ export class AppointmentsAdminController {
   constructor(private readonly appointmentsService: AppointmentsAdminService) {}
 
   @Get()
-  list(
-    @Query('contactId') contactId?: string,
-    @Query('therapistId') therapistId?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
-    return this.appointmentsService.list({ contactId, therapistId, from, to });
+  list(@Query() query: ListAppointmentsQueryDto) {
+    return this.appointmentsService.list(query);
   }
 
   @Post()

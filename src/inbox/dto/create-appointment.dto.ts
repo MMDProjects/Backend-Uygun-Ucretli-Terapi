@@ -19,8 +19,10 @@ export class CreateAppointmentDto {
   @IsEnum(ServiceType)
   serviceType: ServiceType;
 
+  // availabilityId verilirse zorunlu değil; zaman slottan hesaplanır
+  @IsOptional()
   @IsISO8601()
-  scheduledAt: string;
+  scheduledAt?: string;
 
   @IsOptional()
   @IsInt()
@@ -35,4 +37,8 @@ export class CreateAppointmentDto {
   @IsOptional()
   @IsUUID()
   leadId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  availabilityId?: string;
 }

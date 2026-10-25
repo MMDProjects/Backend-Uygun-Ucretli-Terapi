@@ -159,6 +159,7 @@ describe('Experts (e2e)', () => {
           endTime: '12:00',
           isBlockedByAdmin: false,
           expertProfileId: MOCK_EXPERT_PROFILE_ID,
+          appointment: null,
         },
       ]);
 
@@ -384,6 +385,46 @@ describe('Experts (e2e)', () => {
       await request(app.getHttpServer())
         .delete(`/experts/${MOCK_EXPERT_PROFILE_ID}/favorites`)
         .expect(401);
+    });
+  });
+
+  // D8: uzmanın kendi müsaitlik listesinde booked alanı.
+  describe('GET /experts/me/availabilities booked alanı (D8)', () => {
+    it('dolu slotu booked: true, iptal edilmiş randevunun slotunu booked: false doner', async () => {
+      prismaMock.expertProfile.findUnique.mockResolvedValue(
+        mockExpertProfile(),
+      );
+      prismaMock.availability.findMany.mockResolvedValue([
+        {
+          id: 'slot-dolu',
+          dayOfWeek: 0,
+          startTime: '09:00',
+          endTime: '10:00',
+          isBlockedByAdmin: false,
+          expertProfileId: MOCK_EXPERT_PROFILE_ID,
+          appointment: { id: 'apt-1', status: 'SCHEDULED' },
+        },
+        {
+          id: 'slot-iptal',
+          dayOfWeek: 0,
+          startTime: '10:00',
+          endTime: '11:00',
+          isBlockedByAdmin: false,
+          expertProfileId: MOCK_EXPERT_PROFILE_ID,
+          appointment: { id: 'apt-2', status: 'CANCELLED' },
+        },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/experts/me/availabilities')
+        .set('Authorization', bearerHeader(uzmanToken()))
+        .expect(200);
+
+      expect(res.body).toEqual([
+        expect.objectContaining({ id: 'slot-dolu', booked: true }),
+        expect.objectContaining({ id: 'slot-iptal', booked: false }),
+      ]);
+      expect(res.body[0]).not.toHaveProperty('appointment');
     });
   });
 });

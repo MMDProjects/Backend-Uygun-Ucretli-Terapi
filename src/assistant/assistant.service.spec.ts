@@ -120,6 +120,9 @@ function buildDeps(
   const crisisAlert = {
     alert: jest.fn<any, any>().mockResolvedValue(undefined),
   };
+  const promptVersions = {
+    getActiveContent: jest.fn<any, any>().mockResolvedValue('AKTIF PROMPT'),
+  };
 
   const service = new AssistantService(
     prisma as unknown as PrismaService,
@@ -134,6 +137,7 @@ function buildDeps(
     inboxEvents as any,
     settingsService as any,
     crisisAlert as any,
+    promptVersions as any,
   );
 
   return {
@@ -148,6 +152,8 @@ function buildDeps(
     inboxEvents,
     settingsService,
     crisisAlert,
+    promptVersions,
+    promptBuilder,
   };
 }
 
@@ -1368,6 +1374,40 @@ describe('aydınlatma metni', () => {
 
       await expect(deps.service.previewReply('Merhaba')).rejects.toBeInstanceOf(
         OpenAiUnavailableError,
+      );
+    });
+
+    it('previewReply promptOverride verilirse aktif prompt yerine onu kullanır', async () => {
+      const deps = buildDeps('OFF');
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.previewReply('Merhaba', {
+        promptOverride: 'GECICI PROMPT',
+      });
+
+      expect(deps.promptVersions.getActiveContent).not.toHaveBeenCalled();
+      expect(deps.promptBuilder.buildSystemPrompt).toHaveBeenCalledWith(
+        'TABLO',
+        'GECICI PROMPT',
+      );
+    });
+
+    it('previewReply override yokken aktif prompt içeriğini kullanır', async () => {
+      const deps = buildDeps('OFF');
+      deps.openai.chat.mockResolvedValueOnce({
+        content: 'Cevap',
+        toolCalls: [],
+      });
+
+      await deps.service.previewReply('Merhaba');
+
+      expect(deps.promptVersions.getActiveContent).toHaveBeenCalled();
+      expect(deps.promptBuilder.buildSystemPrompt).toHaveBeenCalledWith(
+        'TABLO',
+        'AKTIF PROMPT',
       );
     });
   });

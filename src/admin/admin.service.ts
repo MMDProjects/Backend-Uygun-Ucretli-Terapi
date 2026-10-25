@@ -26,6 +26,10 @@ import {
   parsePagination,
 } from '../common/pagination';
 import {
+  SLOT_APPOINTMENT_SELECT,
+  withBookingState,
+} from '../common/availability-booking';
+import {
   BLOG_APPROVAL_WHERE,
   EXPERT_QUEUES,
   isExpertQueue,
@@ -838,22 +842,30 @@ export class AdminService {
   }
 
   async getExpertAvailabilities(expertId: string, weekStart: Date) {
-    return this.prisma.availability.findMany({
+    const slots = await this.prisma.availability.findMany({
       where: {
         expertProfileId: expertId,
         date: { gte: weekStart, lte: getWeekEnd(weekStart) },
       },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+      include: { appointment: SLOT_APPOINTMENT_SELECT },
     });
+    return slots.map((slot) =>
+      withBookingState(slot, { includeAppointmentId: true }),
+    );
   }
 
   // Admin müsaitlik tablosu tüm uzmanları tek istekte çeker; uzman başına
   // istek atmak rate limit'e takılıp bazı uzmanları boş gösteriyordu.
   async getAllAvailabilities(weekStart: Date) {
-    return this.prisma.availability.findMany({
+    const slots = await this.prisma.availability.findMany({
       where: { date: { gte: weekStart, lte: getWeekEnd(weekStart) } },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+      include: { appointment: SLOT_APPOINTMENT_SELECT },
     });
+    return slots.map((slot) =>
+      withBookingState(slot, { includeAppointmentId: true }),
+    );
   }
 
   async blockAvailability(id: string, block: boolean) {

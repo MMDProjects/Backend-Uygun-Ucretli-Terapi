@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 const TR_LOCALE = 'tr-TR';
 const ISTANBUL_TZ = 'Europe/Istanbul';
 const NOTES_MAX_CHARS = 500;
+const SUMMARY_MAX_CHARS = 1000;
 const HEADER =
   'DANIŞAN BİLGİSİ (sistem kaydı; danışana aynen okuma, tekrar sorma)';
 
@@ -26,11 +27,14 @@ const LEAD_STATUS_LABELS: Record<string, string> = {
 
 export interface ContactContextOptions {
   includeNotes?: boolean;
+  // ASSISTANT_CONVERSATION_SUMMARY açıkken önceki konuşma özetini ekler.
+  includeSummary?: boolean;
 }
 
 export interface ContactContextConversation {
   id: string;
-  contact: Pick<Contact, 'id' | 'fullName' | 'age' | 'notes'>;
+  contact: Pick<Contact, 'id' | 'fullName' | 'age' | 'notes'> &
+    Partial<Pick<Contact, 'lastSummary'>>;
 }
 
 // Tarih ve saat İstanbul saatiyle, Türkçe biçimde yazılır.
@@ -127,6 +131,11 @@ export async function buildContactContext(
 
   if (options.includeNotes && contact.notes) {
     lines.push(`- Personel notu: ${contact.notes.slice(0, NOTES_MAX_CHARS)}`);
+  }
+  if (options.includeSummary && contact.lastSummary) {
+    lines.push(
+      `- Önceki konuşma özeti: ${contact.lastSummary.slice(0, SUMMARY_MAX_CHARS)}`,
+    );
   }
 
   if (lines.length === 0) {

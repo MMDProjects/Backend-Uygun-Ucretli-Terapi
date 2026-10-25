@@ -29,8 +29,12 @@ export class PromptBuilder {
     private readonly config: ConfigService,
   ) {}
 
-  buildSystemPrompt(priceTable: string): string {
-    return ELIF_SYSTEM_PROMPT.replace(PRICE_PLACEHOLDER, () => priceTable);
+  // template: aktif prompt içeriği (veritabanı ya da kod içi varsayılan).
+  buildSystemPrompt(
+    priceTable: string,
+    template: string = ELIF_SYSTEM_PROMPT,
+  ): string {
+    return template.replace(PRICE_PLACEHOLDER, () => priceTable);
   }
 
   async buildPriceTable(): Promise<string> {

@@ -11,6 +11,7 @@ import {
   ConversationStatus,
   LeadStatus,
   Prisma,
+  Role,
   SenderType,
   UnansweredStatus,
 } from '@prisma/client';
@@ -18,6 +19,7 @@ import { Observable, map } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { MetaSenderService } from '../webhooks/meta-sender.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
+import { ConversationSummaryService } from '../assistant/conversation-summary.service';
 import { ListConversationsQueryDto } from './dto/list-conversations.query.dto';
 import { ListMessagesQueryDto } from './dto/list-messages.query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -32,8 +34,14 @@ const CRISIS_HANDBACK_MESSAGE = 'Kriz işaretli konuşma Elif’e geri verilemez
 const SEND_FAILED_MESSAGE = 'Mesaj Meta’ya iletilemedi.';
 const CLOSED_CONVERSATION_MESSAGE = 'Kapalı konuşmaya mesaj gönderilemez.';
 const DEFAULT_INSTAGRAM_MAX_CHARS = 1000;
+const SEARCH_LIMIT = 50;
+const SNIPPET_RADIUS = 60;
 
 const AGENT_SELECT = { select: { firstName: true, lastName: true } } as const;
+const ASSIGNEE_SELECT = {
+  select: { id: true, firstName: true, lastName: true },
+} as const;
+const TAG_SELECT = { select: { id: true, name: true, color: true } } as const;
 
 @Injectable()
 export class InboxService {
@@ -42,9 +50,10 @@ export class InboxService {
     private readonly metaSender: MetaSenderService,
     private readonly inboxEvents: InboxEventsService,
     private readonly config: ConfigService,
+    private readonly summary: ConversationSummaryService,
   ) {}
 
-  async listConversations(query: ListConversationsQueryDto) {
+  async listConversations(query: ListConversationsQueryDto, userId: string) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
@@ -54,15 +63,40 @@ export class InboxService {
     }
     if (query.channel) where.channel = query.channel;
     if (query.crisis) where.flaggedCrisis = true;
+    if (query.assigned === 'me') where.assignedUserId = userId;
+    if (query.assigned === 'unassigned') where.assignedUserId = null;
+    if (query.needsReply) {
+      where.id = { in: await this.needsReplyIds() };
+    }
     const contact: Prisma.ContactWhereInput = {};
     if (query.contactType) contact.contactType = query.contactType;
+    if (query.lifecycleStatus) {
+      contact.lifecycleStatus = query.lifecycleStatus;
+    }
+    if (query.tagId) contact.tags = { some: { id: query.tagId } };
+    if (Object.keys(contact).length > 0) where.contact = contact;
     if (query.q) {
-      contact.OR = [
-        { fullName: { contains: query.q, mode: 'insensitive' } },
-        { phone: { contains: query.q } },
+      // Ad, telefon, Instagram kimliği ve taslak olmayan mesaj içeriği.
+      where.OR = [
+        {
+          contact: {
+            OR: [
+              { fullName: { contains: query.q, mode: 'insensitive' } },
+              { phone: { contains: query.q } },
+              { instagramId: { contains: query.q } },
+            ],
+          },
+        },
+        {
+          messages: {
+            some: {
+              isDraft: false,
+              content: { contains: query.q, mode: 'insensitive' },
+            },
+          },
+        },
       ];
     }
-    if (Object.keys(contact).length > 0) where.contact = contact;
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.conversation.findMany({
@@ -78,8 +112,11 @@ export class InboxService {
               phone: true,
               instagramId: true,
               contactType: true,
+              lifecycleStatus: true,
+              tags: TAG_SELECT,
             },
           },
+          assignedUser: ASSIGNEE_SELECT,
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -95,10 +132,31 @@ export class InboxService {
       this.prisma.conversation.count({ where }),
     ]);
 
-    const data = items.map(({ messages, ...conversation }) => ({
-      ...conversation,
-      lastMessage: messages[0] ?? null,
-    }));
+    if (items.length === 0) return { data: [], total, page, limit };
+
+    // Okuma kayıtları ve cevap bekleyenler toplu çekilir (N+1 yok).
+    const ids = items.map((item) => item.id);
+    const [reads, replyIds] = await Promise.all([
+      this.prisma.conversationRead.findMany({
+        where: { userId, conversationId: { in: ids } },
+        select: { conversationId: true, lastReadAt: true },
+      }),
+      this.needsReplyIds(ids),
+    ]);
+    const lastReadAt = new Map(
+      reads.map((r) => [r.conversationId, r.lastReadAt]),
+    );
+    const needsReply = new Set(replyIds);
+
+    const data = items.map(({ messages, ...conversation }) => {
+      const readAt = lastReadAt.get(conversation.id);
+      return {
+        ...conversation,
+        lastMessage: messages[0] ?? null,
+        unread: !readAt || conversation.lastMessageAt > readAt,
+        needsReply: needsReply.has(conversation.id),
+      };
+    });
     return { data, total, page, limit };
   }
 
@@ -154,11 +212,47 @@ export class InboxService {
     return rows.reverse();
   }
 
+  async searchMessages(q: string) {
+    const rows = await this.prisma.message.findMany({
+      where: { isDraft: false, content: { contains: q, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      take: SEARCH_LIMIT,
+      select: {
+        id: true,
+        conversationId: true,
+        senderType: true,
+        content: true,
+        createdAt: true,
+        conversation: {
+          select: { contact: { select: { fullName: true, channel: true } } },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      conversationId: row.conversationId,
+      messageId: row.id,
+      snippet: this.snippetAround(row.content, q),
+      senderType: row.senderType,
+      createdAt: row.createdAt,
+      contact: row.conversation.contact,
+    }));
+  }
+
   async sendMessage(id: string, dto: SendMessageDto, agentUserId: string) {
     const conversation = await this.findConversationOrFail(id);
 
     if (conversation.status === ConversationStatus.CLOSED) {
       throw new ConflictException(CLOSED_CONVERSATION_MESSAGE);
+    }
+    if (
+      conversation.assignedUserId &&
+      conversation.assignedUserId !== agentUserId &&
+      !dto.force
+    ) {
+      const owner = conversation.assignedUser
+        ? `${conversation.assignedUser.firstName} ${conversation.assignedUser.lastName}`
+        : 'başka bir personel';
+      throw new ConflictException(`Bu konuşma ${owner} üzerinde`);
     }
     if (
       conversation.channel === Channel.INSTAGRAM &&
@@ -220,7 +314,10 @@ export class InboxService {
     });
     await this.prisma.conversation.update({
       where: { id },
-      data: { lastMessageAt: message.createdAt },
+      data: {
+        lastMessageAt: message.createdAt,
+        ...this.autoAssignData(conversation, agentUserId),
+      },
     });
 
     this.inboxEvents.emit('message.created', { conversationId: id, message });
@@ -228,12 +325,48 @@ export class InboxService {
     return message;
   }
 
-  async takeover(id: string) {
-    await this.findConversationOrFail(id);
+  async takeover(id: string, userId: string) {
+    const conversation = await this.findConversationOrFail(id);
     return this.updateState(id, {
       isBotActive: false,
       status: ConversationStatus.PENDING_AGENT,
+      ...this.autoAssignData(conversation, userId),
     });
+  }
+
+  async assignConversation(id: string, userId: string | null) {
+    await this.findConversationOrFail(id);
+    if (userId === null) {
+      await this.updateState(id, { assignedUserId: null, assignedAt: null });
+      return this.findConversationOrFail(id);
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, isActive: true },
+    });
+    if (!user || user.role !== Role.ADMIN || !user.isActive) {
+      throw new BadRequestException(
+        'Konuşma yalnızca yönetici kullanıcılara atanabilir.',
+      );
+    }
+    await this.updateState(id, {
+      assignedUserId: userId,
+      assignedAt: new Date(),
+    });
+    return this.findConversationOrFail(id);
+  }
+
+  async markRead(id: string, userId: string) {
+    await this.findConversationOrFail(id);
+    const now = new Date();
+    const read = await this.prisma.conversationRead.upsert({
+      where: { userId_conversationId: { userId, conversationId: id } },
+      create: { userId, conversationId: id, lastReadAt: now },
+      update: { lastReadAt: now },
+    });
+    this.inboxEvents.emit('counts.changed', {});
+    return read;
   }
 
   async handback(id: string) {
@@ -249,13 +382,17 @@ export class InboxService {
 
   async close(id: string) {
     await this.findConversationOrFail(id);
-    return this.updateState(id, {
+    const conversation = await this.updateState(id, {
       isBotActive: false,
       status: ConversationStatus.CLOSED,
     });
+    // Özet arka planda üretilir; hata olursa kapatma etkilenmez.
+    void this.summary.summarize(id).catch(() => undefined);
+    return conversation;
   }
 
   async updateContact(id: string, dto: UpdateContactDto) {
+    const { tagIds, ...fields } = dto;
     const current = await this.prisma.contact.findUnique({ where: { id } });
     if (!current) {
       throw new NotFoundException('Danışan bulunamadı.');
@@ -270,8 +407,20 @@ export class InboxService {
       );
     }
 
+    const data: Prisma.ContactUpdateInput = { ...fields };
+    if (tagIds !== undefined) {
+      const unique = [...new Set(tagIds)];
+      const found = await this.prisma.contactTag.count({
+        where: { id: { in: unique } },
+      });
+      if (found !== unique.length) {
+        throw new BadRequestException('Bazı etiketler bulunamadı.');
+      }
+      data.tags = { set: unique.map((tagId) => ({ id: tagId })) };
+    }
+
     try {
-      return await this.prisma.contact.update({ where: { id }, data: dto });
+      return await this.prisma.contact.update({ where: { id }, data });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError) {
         if (err.code === 'P2002') {
@@ -287,7 +436,22 @@ export class InboxService {
     }
   }
 
-  async getCounts() {
+  async deleteContactSummary(contactId: string) {
+    const contact = await this.prisma.contact.findUnique({
+      where: { id: contactId },
+      select: { id: true },
+    });
+    if (!contact) {
+      throw new NotFoundException('Danışan bulunamadı.');
+    }
+    return this.prisma.contact.update({
+      where: { id: contactId },
+      data: { lastSummary: null, lastSummaryAt: null },
+      select: { id: true, lastSummary: true, lastSummaryAt: true },
+    });
+  }
+
+  async getCounts(userId: string) {
     const [open, pendingAgent, crisis, openCrisis, newLeads, openUnanswered] =
       await this.prisma.$transaction([
         this.prisma.conversation.count({
@@ -310,6 +474,10 @@ export class InboxService {
           where: { status: UnansweredStatus.OPEN },
         }),
       ]);
+    const [needsReply, unreadForMe] = await Promise.all([
+      this.countNeedsReply(),
+      this.countUnreadForUser(userId),
+    ]);
     return {
       open,
       pendingAgent,
@@ -317,6 +485,8 @@ export class InboxService {
       attention: pendingAgent + openCrisis,
       newLeads,
       openUnanswered,
+      needsReply,
+      unreadForMe,
     };
   }
 
@@ -329,12 +499,77 @@ export class InboxService {
   private async findConversationOrFail(id: string) {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id },
-      include: { contact: true },
+      include: {
+        contact: { include: { tags: TAG_SELECT } },
+        assignedUser: ASSIGNEE_SELECT,
+      },
     });
     if (!conversation) {
       throw new NotFoundException('Konuşma bulunamadı.');
     }
     return conversation;
+  }
+
+  // Atanmamış konuşmayı işlem yapan personele atar; atanmışsa dokunmaz.
+  private autoAssignData(
+    conversation: { assignedUserId?: string | null },
+    userId: string,
+  ): { assignedUserId?: string; assignedAt?: Date } {
+    return conversation.assignedUserId
+      ? {}
+      : { assignedUserId: userId, assignedAt: new Date() };
+  }
+
+  // Son taslak olmayan mesajı danışandan gelen ve kapalı olmayan konuşmalar.
+  private needsReplySql(scope: Prisma.Sql = Prisma.empty): Prisma.Sql {
+    return Prisma.sql`
+      SELECT c.id FROM conversations c
+      JOIN LATERAL (
+        SELECT m."senderType" FROM messages m
+        WHERE m."conversationId" = c.id AND m."isDraft" = false
+        ORDER BY m."createdAt" DESC LIMIT 1
+      ) lm ON lm."senderType" = 'CLIENT'
+      WHERE c.status <> 'CLOSED' ${scope}`;
+  }
+
+  private async needsReplyIds(ids?: string[]): Promise<string[]> {
+    if (ids && ids.length === 0) return [];
+    const scope = ids
+      ? Prisma.sql`AND c.id IN (${Prisma.join(ids)})`
+      : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>(
+      this.needsReplySql(scope),
+    );
+    return rows.map((row) => row.id);
+  }
+
+  private async countNeedsReply(): Promise<number> {
+    const rows = await this.prisma.$queryRaw<{ count: number }[]>(
+      Prisma.sql`SELECT COUNT(*)::int AS count FROM (${this.needsReplySql()}) AS t`,
+    );
+    return rows[0]?.count ?? 0;
+  }
+
+  private async countUnreadForUser(userId: string): Promise<number> {
+    const rows = await this.prisma.$queryRaw<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count FROM conversations c
+      LEFT JOIN conversation_reads r
+        ON r."conversationId" = c.id AND r."userId" = ${userId}
+      WHERE r.id IS NULL OR c."lastMessageAt" > r."lastReadAt"`;
+    return rows[0]?.count ?? 0;
+  }
+
+  // Eşleşmenin çevresinden ±60 karakterlik kesit.
+  private snippetAround(content: string, q: string): string {
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(escaped, 'i').exec(content);
+    if (!match) return content.slice(0, SNIPPET_RADIUS * 2);
+    const start = Math.max(0, match.index - SNIPPET_RADIUS);
+    const end = Math.min(
+      content.length,
+      match.index + match[0].length + SNIPPET_RADIUS,
+    );
+    return content.slice(start, end);
   }
 
   private async lastClientMessageAt(
@@ -386,7 +621,7 @@ export class InboxService {
 
   private async updateState(
     id: string,
-    data: { isBotActive?: boolean; status?: ConversationStatus },
+    data: Prisma.ConversationUncheckedUpdateInput,
   ) {
     const conversation = await this.prisma.conversation.update({
       where: { id },
