@@ -2,6 +2,8 @@ export interface MetaWebhookEntry {
   id: string;
   changes?: MetaWhatsAppChange[];
   messaging?: MetaInstagramMessagingEvent[];
+  // Instagram bekleme modu: sahiplik başka bir uygulamadayken gelen olaylar.
+  standby?: MetaInstagramMessagingEvent[];
 }
 
 export interface MetaWhatsAppChange {

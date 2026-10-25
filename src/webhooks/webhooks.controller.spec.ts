@@ -188,9 +188,33 @@ describe('WebhooksController', () => {
       expect(processIncomingMessage).toHaveBeenCalledWith(normalizedMessage);
       expect(handleIncoming).toHaveBeenCalledWith('conv-1', 'Merhaba', {
         kind: 'text',
+        draftOnly: false,
       });
       expect(handleCrisis).not.toHaveBeenCalled();
       expect(result).toEqual({ received: true });
+    });
+
+    it('Instagram bekleme (standby) mesajında handleIncoming draftOnly: true ile çağrılır', async () => {
+      const { service } = buildServiceMock(
+        {
+          conversationId: 'conv-1',
+          isNew: true,
+          crisis: false,
+          crisisNew: false,
+          kind: 'text',
+          standby: true,
+        },
+        [{ ...normalizedMessage, channel: 'INSTAGRAM', standby: true }],
+      );
+      const { assistant, handleIncoming } = buildAssistantMock();
+      const controller = new WebhooksController(service, config, assistant);
+
+      await controller.receive(buildValidRequest());
+
+      expect(handleIncoming).toHaveBeenCalledWith('conv-1', 'Merhaba', {
+        kind: 'text',
+        draftOnly: true,
+      });
     });
 
     it('medya mesajında handleIncoming kind: unsupported ile çağrılır', async () => {
@@ -218,7 +242,7 @@ describe('WebhooksController', () => {
       expect(handleIncoming).toHaveBeenCalledWith(
         'conv-1',
         '[desteklenmeyen mesaj tipi: audio]',
-        { kind: 'unsupported' },
+        { kind: 'unsupported', draftOnly: false },
       );
     });
 

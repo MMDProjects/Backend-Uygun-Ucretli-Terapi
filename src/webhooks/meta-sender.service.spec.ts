@@ -143,4 +143,32 @@ describe('MetaSenderService', () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
+
+  it('Instagram’da HUMAN_AGENT seçeneği MESSAGE_TAG ve tag alanını gövdeye ekler', async () => {
+    await buildService().sendText('INSTAGRAM', 'igsid-9', 'Selam', {
+      tag: 'HUMAN_AGENT',
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({
+      recipient: { id: 'igsid-9' },
+      message: { text: 'Selam' },
+      messaging_type: 'MESSAGE_TAG',
+      tag: 'HUMAN_AGENT',
+    });
+  });
+
+  it('WhatsApp’ta HUMAN_AGENT seçeneği yok sayılır', async () => {
+    await buildService().sendText('WHATSAPP', '905550001122', 'Merhaba', {
+      tag: 'HUMAN_AGENT',
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({
+      messaging_product: 'whatsapp',
+      to: '905550001122',
+      type: 'text',
+      text: { body: 'Merhaba' },
+    });
+  });
 });

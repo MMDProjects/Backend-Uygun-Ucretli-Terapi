@@ -259,6 +259,53 @@ describe('Inbox (e2e)', () => {
     });
   });
 
+  describe('PATCH /admin/inbox/contacts/:id (contactType)', () => {
+    it('contactType UZMAN olarak guncellenir ve 200 doner', async () => {
+      prismaMock.contact.findUnique.mockResolvedValue({
+        id: CONTACT_UUID,
+        channel: 'INSTAGRAM',
+        phone: null,
+      });
+      prismaMock.contact.update.mockResolvedValue({
+        id: CONTACT_UUID,
+        channel: 'INSTAGRAM',
+        contactType: 'UZMAN',
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/admin/inbox/contacts/${CONTACT_UUID}`)
+        .set('Authorization', bearerHeader(adminToken()))
+        .send({ contactType: 'UZMAN' })
+        .expect(200);
+
+      expect(prismaMock.contact.update).toHaveBeenCalledWith({
+        where: { id: CONTACT_UUID },
+        data: { contactType: 'UZMAN' },
+      });
+    });
+
+    it('gecersiz contactType icin 400 doner', async () => {
+      await request(app.getHttpServer())
+        .patch(`/admin/inbox/contacts/${CONTACT_UUID}`)
+        .set('Authorization', bearerHeader(adminToken()))
+        .send({ contactType: 'XYZ' })
+        .expect(400);
+
+      expect(prismaMock.contact.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /admin/inbox/conversations (contactType filtresi)', () => {
+    it('gecersiz contactType icin 400 doner', async () => {
+      await request(app.getHttpServer())
+        .get('/admin/inbox/conversations?contactType=XYZ')
+        .set('Authorization', bearerHeader(adminToken()))
+        .expect(400);
+
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('PATCH /admin/leads/:id/status', () => {
     it('gecersiz status icin 400 doner', async () => {
       await request(app.getHttpServer())

@@ -58,10 +58,12 @@ export class PromptBuilder {
   }
 
   buildChannelTag(channel: Channel, phone?: string | null): string {
+    // Telefon numarasının kendisi modele gönderilmez (KVKK); yalnızca var/yok bilgisi.
+    const hasPhone = !!phone;
     if (channel === Channel.WHATSAPP) {
-      return `[KANAL: WhatsApp · Müşterinin numarası: ${phone ?? ''}]`;
+      return `[KANAL: WhatsApp · Müşterinin telefon numarası ${hasPhone ? 'sistemde mevcut' : 'yok'}.]`;
     }
-    return '[KANAL: Instagram DM · Müşterinin telefon numarası sistemde YOK.]';
+    return `[KANAL: Instagram DM · Müşterinin telefon numarası ${hasPhone ? 'sistemde mevcut' : 'sistemde YOK'}.]`;
   }
 
   buildNowTag(date: Date): string {

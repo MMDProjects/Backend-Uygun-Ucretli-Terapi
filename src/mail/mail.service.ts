@@ -2,6 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BrevoClient } from '@getbrevo/brevo';
 
+// Kullanıcıdan gelen metni e-posta HTML'ine koymadan önce kaçışlar.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -367,5 +377,35 @@ export class MailService {
       'Profiliniz Hakkında Bilgi',
       this.buildEmailHtml('Profil Güncellemesi Gerekli', body),
     );
+  }
+
+  // ─── Admin: Kriz Bildirimi (Asistan) ──────────────────────────────────────
+
+  // Mesaj metni e-postaya yazılmaz; yalnızca danışan etiketi, kanal ve bağlantı gider.
+  async sendCrisisAlert(data: {
+    to: string[];
+    contactLabel: string;
+    channel: string;
+    at: Date;
+    link: string;
+  }) {
+    const time = data.at.toLocaleString('tr-TR', {
+      timeZone: 'Europe/Istanbul',
+    });
+    const body = `
+      <p style="color:#1a1a1a;line-height:1.7">
+        Elif bir konuşmada acil durum veya kriz işareti tespit etti. Lütfen konuşmayı hemen inceleyin.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:14px">
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:120px">Danışan</td><td style="padding:8px">${escapeHtml(data.contactLabel)}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:600">Kanal</td><td style="padding:8px">${escapeHtml(data.channel)}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:600">Zaman</td><td style="padding:8px">${escapeHtml(time)}</td></tr>
+      </table>
+      ${this.ctaButton('Konuşmayı Aç', escapeHtml(data.link))}
+    `;
+    const html = this.buildEmailHtml('Acil Kriz Bildirimi', body);
+    for (const email of data.to) {
+      await this.send(email, '', 'ACİL: Kriz bildirimi — Elif', html);
+    }
   }
 }

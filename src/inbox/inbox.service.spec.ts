@@ -15,6 +15,7 @@ function buildPrismaMock() {
   const prisma: any = {
     conversation: {
       findUnique: jest.fn<any, any>(),
+      findMany: jest.fn<any, any>().mockResolvedValue([]),
       update: jest.fn<any, any>(),
       count: jest.fn<any, any>().mockResolvedValue(0),
     },
@@ -26,13 +27,23 @@ function buildPrismaMock() {
       findUnique: jest.fn<any, any>(),
       update: jest.fn<any, any>(),
     },
-    lead: { count: jest.fn<any, any>().mockResolvedValue(0) },
+    lead: {
+      count: jest.fn<any, any>().mockResolvedValue(0),
+      findMany: jest.fn<any, any>().mockResolvedValue([]),
+    },
+    appointment: { findMany: jest.fn<any, any>().mockResolvedValue([]) },
     unansweredQuestion: { count: jest.fn<any, any>().mockResolvedValue(0) },
   };
   prisma.$transaction = jest.fn<any, any>((ops: Promise<unknown>[]) =>
     Promise.all(ops),
   );
   return prisma;
+}
+
+let humanAgentTagFlag = false;
+
+function withHumanAgentTag(enabled: boolean) {
+  humanAgentTagFlag = enabled;
 }
 
 function conversation(overrides: Record<string, unknown> = {}) {
@@ -61,8 +72,13 @@ describe('InboxService', () => {
       sendText: jest.fn<any, any>().mockResolvedValue({ ok: true }),
     };
     inboxEvents = { emit: jest.fn<any, any>(), stream: jest.fn<any, any>() };
+    humanAgentTagFlag = false;
     config = {
-      get: jest.fn((_key: string, fallback?: string) => fallback),
+      get: jest.fn((key: string, fallback?: string) =>
+        key === 'INSTAGRAM_HUMAN_AGENT_TAG'
+          ? String(humanAgentTagFlag)
+          : fallback,
+      ),
     };
     service = new InboxService(
       prisma,
@@ -418,6 +434,196 @@ describe('InboxService', () => {
       expect(prisma.conversation.count).toHaveBeenCalledWith({
         where: { flaggedCrisis: true, status: 'OPEN' },
       });
+    });
+  });
+
+  describe('listConversations filtreleri', () => {
+    it('contactType filtresini kişi koşuluna ekler', async () => {
+      await service.listConversations({ contactType: 'UZMAN' } as any);
+
+      expect(prisma.conversation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { contact: { contactType: 'UZMAN' } },
+        }),
+      );
+    });
+
+    it('contactType ve arama metnini aynı kişi koşulunda birleştirir', async () => {
+      await service.listConversations({
+        contactType: 'EKIP',
+        q: 'Ayşe',
+      } as any);
+
+      expect(prisma.conversation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            contact: {
+              contactType: 'EKIP',
+              OR: [
+                { fullName: { contains: 'Ayşe', mode: 'insensitive' } },
+                { phone: { contains: 'Ayşe' } },
+              ],
+            },
+          },
+        }),
+      );
+    });
+
+    it('liste yanıtında contactType ve son mesajın isDraft alanını seçer', async () => {
+      await service.listConversations({});
+
+      const args = prisma.conversation.findMany.mock.calls[0][0];
+      expect(args.include.contact.select).toMatchObject({ contactType: true });
+      expect(args.include.messages.select).toMatchObject({ isDraft: true });
+    });
+  });
+
+  describe('getConversation pencere bilgisi', () => {
+    it('son danışan mesajından 24 saat sonrasını windowExpiresAt olarak döner', async () => {
+      const lastAt = new Date(Date.now() - 2 * HOUR);
+      prisma.conversation.findUnique.mockResolvedValue(
+        conversation({ contact: { id: 'contact-1', contactType: 'DANISAN' } }),
+      );
+      prisma.message.findFirst.mockResolvedValue({ createdAt: lastAt });
+
+      const result = await service.getConversation('conv-1');
+
+      expect(result.windowOpen).toBe(true);
+      expect(result.windowExpiresAt).toBe(
+        new Date(lastAt.getTime() + 24 * HOUR).toISOString(),
+      );
+    });
+
+    it('danışan hiç yazmamışsa windowExpiresAt null döner', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(conversation());
+      prisma.message.findFirst.mockResolvedValue(null);
+
+      const result = await service.getConversation('conv-1');
+
+      expect(result.windowOpen).toBe(false);
+      expect(result.windowExpiresAt).toBeNull();
+    });
+
+    it('bayrak açıkken Instagram için windowExpiresAt 7 gün sonrasıdır', async () => {
+      withHumanAgentTag(true);
+      const lastAt = new Date(Date.now() - 3 * 24 * HOUR);
+      prisma.conversation.findUnique.mockResolvedValue(
+        conversation({
+          channel: 'INSTAGRAM',
+          contact: { id: 'contact-1', phone: null, instagramId: 'ig-99' },
+        }),
+      );
+      prisma.message.findFirst.mockResolvedValue({ createdAt: lastAt });
+
+      const result = await service.getConversation('conv-1');
+
+      expect(result.windowOpen).toBe(true);
+      expect(result.windowExpiresAt).toBe(
+        new Date(lastAt.getTime() + 7 * 24 * HOUR).toISOString(),
+      );
+    });
+  });
+
+  describe('updateContact contactType', () => {
+    it('contactType değişince konuşmaya dokunmaz', async () => {
+      prisma.contact.findUnique.mockResolvedValue({
+        id: 'contact-1',
+        channel: 'WHATSAPP',
+        phone: '905550001122',
+      });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+
+      await service.updateContact('contact-1', { contactType: 'DANISAN' });
+
+      expect(prisma.contact.update).toHaveBeenCalledWith({
+        where: { id: 'contact-1' },
+        data: { contactType: 'DANISAN' },
+      });
+      expect(prisma.conversation.update).not.toHaveBeenCalled();
+      expect(inboxEvents.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Instagram HUMAN_AGENT etiketi', () => {
+    const instagram = () =>
+      conversation({
+        channel: 'INSTAGRAM',
+        isBotActive: false,
+        contact: { id: 'contact-1', phone: null, instagramId: 'ig-99' },
+      });
+
+    it('bayrak kapalıyken 3 gün önceki danışan mesajına gönderim 409 döner', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(instagram());
+      prisma.message.findFirst.mockResolvedValue({
+        createdAt: new Date(Date.now() - 3 * 24 * HOUR),
+      });
+
+      await expect(
+        service.sendMessage('conv-1', { content: 'Merhaba' }, 'admin-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(metaSender.sendText).not.toHaveBeenCalled();
+    });
+
+    it('bayrak açıkken 24 saati geçen ama 7 günü geçmeyen pencerede HUMAN_AGENT etiketiyle gönderir', async () => {
+      withHumanAgentTag(true);
+      prisma.conversation.findUnique.mockResolvedValue(instagram());
+      prisma.message.findFirst.mockResolvedValue({
+        createdAt: new Date(Date.now() - 3 * 24 * HOUR),
+      });
+      prisma.message.create.mockResolvedValue({ id: 'msg-tag' });
+
+      await service.sendMessage('conv-1', { content: 'Merhaba' }, 'admin-1');
+
+      expect(metaSender.sendText).toHaveBeenCalledWith(
+        'INSTAGRAM',
+        'ig-99',
+        'Merhaba',
+        { tag: 'HUMAN_AGENT' },
+      );
+      expect(prisma.message.create).toHaveBeenCalled();
+    });
+
+    it('bayrak açıkken 24 saat içindeki mesajda etiket eklemez', async () => {
+      withHumanAgentTag(true);
+      prisma.conversation.findUnique.mockResolvedValue(instagram());
+      prisma.message.findFirst.mockResolvedValue({
+        createdAt: new Date(Date.now() - 2 * HOUR),
+      });
+      prisma.message.create.mockResolvedValue({ id: 'msg-plain' });
+
+      await service.sendMessage('conv-1', { content: 'Merhaba' }, 'admin-1');
+
+      expect(metaSender.sendText).toHaveBeenCalledWith(
+        'INSTAGRAM',
+        'ig-99',
+        'Merhaba',
+      );
+    });
+
+    it('bayrak açıkken 7 günü geçen pencerede 409 döner ve göndermez', async () => {
+      withHumanAgentTag(true);
+      prisma.conversation.findUnique.mockResolvedValue(instagram());
+      prisma.message.findFirst.mockResolvedValue({
+        createdAt: new Date(Date.now() - 8 * 24 * HOUR),
+      });
+
+      await expect(
+        service.sendMessage('conv-1', { content: 'Merhaba' }, 'admin-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(metaSender.sendText).not.toHaveBeenCalled();
+    });
+
+    it('bayrak açık olsa da WhatsApp 24 saat penceresinde kalır', async () => {
+      withHumanAgentTag(true);
+      prisma.conversation.findUnique.mockResolvedValue(conversation());
+      prisma.message.findFirst.mockResolvedValue({
+        createdAt: new Date(Date.now() - 3 * 24 * HOUR),
+      });
+
+      await expect(
+        service.sendMessage('conv-1', { content: 'Merhaba' }, 'admin-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(metaSender.sendText).not.toHaveBeenCalled();
     });
   });
 });

@@ -23,9 +23,11 @@ import { ListMessagesQueryDto } from './dto/list-messages.query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 
-const WINDOW_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WINDOW_MS = DAY_MS;
+const HUMAN_AGENT_WINDOW_MS = 7 * DAY_MS;
 const WINDOW_CLOSED_MESSAGE =
-  '24 saatlik mesajlaşma penceresi kapandı; danışan yeniden yazana kadar serbest mesaj gönderilemez.';
+  'Mesajlaşma penceresi kapandı; danışan yeniden yazana kadar serbest mesaj gönderilemez.';
 const CRISIS_HANDBACK_MESSAGE = 'Kriz işaretli konuşma Elif’e geri verilemez.';
 const SEND_FAILED_MESSAGE = 'Mesaj Meta’ya iletilemedi.';
 const CLOSED_CONVERSATION_MESSAGE = 'Kapalı konuşmaya mesaj gönderilemez.';
@@ -52,14 +54,15 @@ export class InboxService {
     }
     if (query.channel) where.channel = query.channel;
     if (query.crisis) where.flaggedCrisis = true;
+    const contact: Prisma.ContactWhereInput = {};
+    if (query.contactType) contact.contactType = query.contactType;
     if (query.q) {
-      where.contact = {
-        OR: [
-          { fullName: { contains: query.q, mode: 'insensitive' } },
-          { phone: { contains: query.q } },
-        ],
-      };
+      contact.OR = [
+        { fullName: { contains: query.q, mode: 'insensitive' } },
+        { phone: { contains: query.q } },
+      ];
     }
+    if (Object.keys(contact).length > 0) where.contact = contact;
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.conversation.findMany({
@@ -74,12 +77,18 @@ export class InboxService {
               fullName: true,
               phone: true,
               instagramId: true,
+              contactType: true,
             },
           },
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 1,
-            select: { content: true, senderType: true, createdAt: true },
+            select: {
+              content: true,
+              senderType: true,
+              createdAt: true,
+              isDraft: true,
+            },
           },
         },
       }),
@@ -119,11 +128,13 @@ export class InboxService {
       this.lastClientMessageAt(id),
     ]);
 
+    const window = this.messagingWindow(conversation.channel, lastClient);
     return {
       ...conversation,
       leads,
       appointments,
-      windowOpen: this.isWindowOpen(lastClient),
+      windowOpen: window.open,
+      windowExpiresAt: window.expiresAt?.toISOString() ?? null,
     };
   }
 
@@ -158,7 +169,11 @@ export class InboxService {
       );
     }
 
-    if (!this.isWindowOpen(await this.lastClientMessageAt(id))) {
+    const window = this.messagingWindow(
+      conversation.channel,
+      await this.lastClientMessageAt(id),
+    );
+    if (!window.open) {
       throw new ConflictException(WINDOW_CLOSED_MESSAGE);
     }
 
@@ -177,11 +192,18 @@ export class InboxService {
       });
     }
 
-    const res = await this.metaSender.sendText(
-      conversation.channel,
-      recipientId,
-      dto.content,
-    );
+    const res = window.tag
+      ? await this.metaSender.sendText(
+          conversation.channel,
+          recipientId,
+          dto.content,
+          { tag: 'HUMAN_AGENT' },
+        )
+      : await this.metaSender.sendText(
+          conversation.channel,
+          recipientId,
+          dto.content,
+        );
     if (!res.ok) {
       throw new BadGatewayException(SEND_FAILED_MESSAGE);
     }
@@ -338,8 +360,28 @@ export class InboxService {
       : DEFAULT_INSTAGRAM_MAX_CHARS;
   }
 
-  private isWindowOpen(lastClientAt: Date | null): boolean {
-    return !!lastClientAt && Date.now() - lastClientAt.getTime() < WINDOW_MS;
+  private humanAgentTagEnabled(): boolean {
+    return this.config.get<string>('INSTAGRAM_HUMAN_AGENT_TAG') === 'true';
+  }
+
+  // Instagram + bayrak açıksa pencere 7 güne uzar; 24 saat sonrası HUMAN_AGENT etiketi gerektirir.
+  private messagingWindow(
+    channel: Channel,
+    lastClientAt: Date | null,
+  ): { open: boolean; tag: boolean; expiresAt: Date | null } {
+    if (!lastClientAt) {
+      return { open: false, tag: false, expiresAt: null };
+    }
+    const extended =
+      channel === Channel.INSTAGRAM && this.humanAgentTagEnabled();
+    const span = extended ? HUMAN_AGENT_WINDOW_MS : WINDOW_MS;
+    const elapsed = Date.now() - lastClientAt.getTime();
+    const open = elapsed < span;
+    return {
+      open,
+      tag: open && extended && elapsed >= WINDOW_MS,
+      expiresAt: new Date(lastClientAt.getTime() + span),
+    };
   }
 
   private async updateState(

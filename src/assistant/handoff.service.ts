@@ -3,6 +3,7 @@ import { ConversationStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
+import { CrisisAlertService } from './crisis-alert.service';
 
 export type HandoffReason =
   | 'randevu_degisiklik'
@@ -11,7 +12,8 @@ export type HandoffReason =
   | 'yetkili_talebi'
   | 'konum_idari'
   | 'bilinmeyen_konu'
-  | 'acil_durum';
+  | 'acil_durum'
+  | 'uzman_ekip';
 
 export const REASON_LABELS: Record<HandoffReason, string> = {
   randevu_degisiklik: 'Randevu değişikliği',
@@ -21,6 +23,7 @@ export const REASON_LABELS: Record<HandoffReason, string> = {
   konum_idari: 'Konum/idari',
   bilinmeyen_konu: 'Bilinmeyen konu',
   acil_durum: 'Acil durum',
+  uzman_ekip: 'Uzman / iç ekip',
 };
 
 const MAX_SUMMARY_CHARS = 1000;
@@ -32,6 +35,7 @@ export class HandoffService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private inboxEvents: InboxEventsService,
+    private crisisAlert: CrisisAlertService,
   ) {}
 
   async handoff(
@@ -60,6 +64,10 @@ export class HandoffService {
 
     this.inboxEvents.emit('conversation.updated', { conversationId });
     this.inboxEvents.emit('counts.changed', {});
+
+    if (isCrisis) {
+      await this.crisisAlert.alert(conversationId, 'handoff');
+    }
 
     const contact = conversation?.contact;
     const who =

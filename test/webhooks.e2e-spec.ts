@@ -56,6 +56,27 @@ function whatsappPayload(text: string, messageId: string) {
   };
 }
 
+// Instagram bekleme modu (standby): işletme henüz devralmamış konuşmadaki mesaj.
+function instagramStandbyPayload(text: string, mid: string) {
+  return {
+    object: 'instagram',
+    entry: [
+      {
+        id: 'IG_PAGE_ID',
+        time: 1760000000000,
+        standby: [
+          {
+            sender: { id: 'IGSID_STANDBY' },
+            recipient: { id: 'IG_PAGE_ID' },
+            timestamp: 1760000000000,
+            message: { mid, text },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function sign(raw: string, secret = META_APP_SECRET): string {
   return (
     'sha256=' + crypto.createHmac('sha256', secret).update(raw).digest('hex')
@@ -93,6 +114,8 @@ describe('Webhooks Meta (e2e)', () => {
     });
     prismaMock.conversation.update.mockResolvedValue({});
     prismaMock.message.create.mockResolvedValue({ id: MESSAGE_ID });
+    // Yeni WhatsApp kişisinde otomatik tanıma uzman/ekip listesini okur.
+    prismaMock.user.findMany.mockResolvedValue([]);
   };
 
   beforeAll(async () => {
@@ -162,7 +185,30 @@ describe('Webhooks Meta (e2e)', () => {
     expect(assistantMock.handleIncoming).toHaveBeenCalledWith(
       CONVERSATION_ID,
       'Merhaba',
-      { kind: 'text' },
+      { kind: 'text', draftOnly: false },
+    );
+  });
+
+  it('Instagram standby olayi 200 doner ve Elif yalnizca taslak modunda cagrilir', async () => {
+    const raw = JSON.stringify(
+      instagramStandbyPayload('Bekleme mesajı', 'mid.STANDBY1'),
+    );
+
+    await postSigned(raw).expect(200);
+
+    expect(prismaMock.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        senderType: 'CLIENT',
+        content: 'Bekleme mesajı',
+        metaMessageId: 'mid.STANDBY1',
+      }),
+    });
+    expect(assistantMock.handleIncoming).toHaveBeenCalledTimes(1);
+    expect(assistantMock.handleIncoming).toHaveBeenCalledWith(
+      CONVERSATION_ID,
+      'Bekleme mesajı',
+      { kind: 'text', draftOnly: true },
     );
   });
 

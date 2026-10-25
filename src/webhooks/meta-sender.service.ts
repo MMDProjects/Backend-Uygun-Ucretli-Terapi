@@ -6,6 +6,11 @@ const DEFAULT_TIMEOUT_MS = 10000;
 const RETRY_DELAY_MS = 1000;
 const MAX_LOGGED_BODY = 300;
 
+export interface MetaSendOptions {
+  // Yalnızca Instagram'da uygulanır; WhatsApp'ta yok sayılır.
+  tag?: 'HUMAN_AGENT';
+}
+
 export interface MetaSendResult {
   ok: boolean;
   messageId?: string;
@@ -26,6 +31,7 @@ export class MetaSenderService {
     channel: Channel,
     recipientId: string,
     text: string,
+    opts?: MetaSendOptions,
   ): Promise<MetaSendResult> {
     const version = this.config.get<string>('META_GRAPH_VERSION') ?? 'v21.0';
 
@@ -63,6 +69,11 @@ export class MetaSenderService {
         recipient: { id: recipientId },
         message: { text },
       };
+      // 24 saatlik pencere dışında kişisel insan-ajan etiketi (7 güne kadar).
+      if (opts?.tag === 'HUMAN_AGENT') {
+        body.messaging_type = 'MESSAGE_TAG';
+        body.tag = 'HUMAN_AGENT';
+      }
     } else {
       this.logger.warn(
         `Desteklenmeyen kanal için gönderim atlandı: ${channel}`,

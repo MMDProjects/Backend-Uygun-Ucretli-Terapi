@@ -2,6 +2,7 @@ import { HandoffService, REASON_LABELS } from './handoff.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
+import { CrisisAlertService } from './crisis-alert.service';
 
 const CONTACT_SELECT = {
   contact: { select: { fullName: true, phone: true, instagramId: true } },
@@ -22,6 +23,7 @@ describe('HandoffService', () => {
   let notifications: { notifyAdmins: jest.Mock };
   let service: HandoffService;
   let inboxEvents: { emit: jest.Mock };
+  let crisisAlert: { alert: jest.Mock };
 
   beforeEach(() => {
     prisma = buildPrismaMock();
@@ -29,10 +31,12 @@ describe('HandoffService', () => {
       notifyAdmins: jest.fn<any, any>().mockResolvedValue(undefined),
     };
     inboxEvents = { emit: jest.fn<any, any>() };
+    crisisAlert = { alert: jest.fn<any, any>().mockResolvedValue(undefined) };
     service = new HandoffService(
       prisma as unknown as PrismaService,
       notifications as unknown as NotificationsService,
       inboxEvents as unknown as InboxEventsService,
+      crisisAlert as unknown as CrisisAlertService,
     );
   });
 
@@ -127,5 +131,36 @@ describe('HandoffService', () => {
 
     const data = prisma.conversation.update.mock.calls[0][0].data;
     expect(data).not.toHaveProperty('flaggedCrisis');
+  });
+
+  it('acil_durum devrinde kriz e-postası için CrisisAlertService çağrılır', async () => {
+    await service.handoff('conv-7', 'acil_durum', 'Kriz özeti');
+
+    expect(crisisAlert.alert).toHaveBeenCalledWith('conv-7', 'handoff');
+  });
+
+  it('acil olmayan devirde kriz e-postası gönderilmez', async () => {
+    await service.handoff('conv-8', 'sikayet', 'Şikayet');
+
+    expect(crisisAlert.alert).not.toHaveBeenCalled();
+  });
+
+  it('uzman_ekip devrini doğru etiketle bildirir ve botu kapatır', async () => {
+    await service.handoff(
+      'conv-9',
+      'uzman_ekip',
+      'Uzman veya iç ekip mesajı — Elif cevap vermez',
+    );
+
+    expect(REASON_LABELS.uzman_ekip).toBe('Uzman / iç ekip');
+    expect(prisma.conversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          isBotActive: false,
+          handoffReason: 'uzman_ekip',
+        }),
+      }),
+    );
+    expect(crisisAlert.alert).not.toHaveBeenCalled();
   });
 });

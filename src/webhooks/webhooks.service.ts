@@ -8,7 +8,10 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
+import { AssistantSettingsService } from '../assistant/assistant-settings.service';
 import { containsCrisisLanguage } from './crisis-keywords';
+import { detectContactType } from './contact-type.util';
+import { InstagramProfileService } from './instagram-profile.service';
 import {
   MetaWebhookBody,
   MetaWhatsAppChange,
@@ -27,6 +30,8 @@ export interface ProcessedIncomingMessage {
   crisisNew: boolean;
   kind: MessageKind;
   messageId: string | null;
+  // Instagram bekleme modundan (standby) geldiyse true: Elif yalnızca taslak üretir.
+  standby: boolean;
 }
 
 interface NormalizedIncomingMessage {
@@ -37,6 +42,7 @@ interface NormalizedIncomingMessage {
   content: string;
   kind: MessageKind;
   timestamp: Date;
+  standby?: boolean;
 }
 
 // Instagram'da işletmeden çıkan mesajın kopyası (is_echo).
@@ -44,6 +50,8 @@ export interface InstagramEcho {
   externalContactId: string; // recipient.id: danışan
   metaMessageId: string;
   content: string;
+  // Bekleme modunda (standby) gelen kopya; konuşma devralınmaz.
+  standby?: boolean;
 }
 
 const ECHO_RECHECK_MS = 5000;
@@ -59,6 +67,8 @@ export class WebhooksService {
     private readonly prisma: PrismaService,
     private readonly inboxEvents: InboxEventsService,
     private readonly config: ConfigService,
+    private readonly settings: AssistantSettingsService,
+    private readonly instagramProfile: InstagramProfileService,
   ) {}
 
   extractMessages(body: MetaWebhookBody): NormalizedIncomingMessage[] {
@@ -70,6 +80,9 @@ export class WebhooksService {
       if (entry.messaging) {
         result.push(...this.extractInstagramMessages(entry.messaging));
       }
+      if (entry.standby) {
+        result.push(...this.extractInstagramMessages(entry.standby, true));
+      }
     }
     return result;
   }
@@ -77,13 +90,20 @@ export class WebhooksService {
   extractInstagramEchoes(body: MetaWebhookBody): InstagramEcho[] {
     const result: InstagramEcho[] = [];
     for (const entry of body.entry ?? []) {
-      for (const event of entry.messaging ?? []) {
-        if (!event.message?.is_echo) continue;
-        result.push({
-          externalContactId: event.recipient.id,
-          metaMessageId: event.message.mid,
-          content: event.message.text || `${UNSUPPORTED_PREFIX}]`,
-        });
+      const sources: [MetaInstagramMessagingEvent[] | undefined, boolean][] = [
+        [entry.messaging, false],
+        [entry.standby, true],
+      ];
+      for (const [events, standby] of sources) {
+        for (const event of events ?? []) {
+          if (!event.message?.is_echo) continue;
+          result.push({
+            externalContactId: event.recipient.id,
+            metaMessageId: event.message.mid,
+            content: event.message.text || `${UNSUPPORTED_PREFIX}]`,
+            ...(standby ? { standby: true } : {}),
+          });
+        }
       }
     }
     return result;
@@ -115,6 +135,7 @@ export class WebhooksService {
 
   private extractInstagramMessages(
     events: MetaInstagramMessagingEvent[],
+    standby = false,
   ): NormalizedIncomingMessage[] {
     const result: NormalizedIncomingMessage[] = [];
     for (const event of events) {
@@ -128,6 +149,7 @@ export class WebhooksService {
         content: text || `${UNSUPPORTED_PREFIX}]`,
         kind: text ? 'text' : 'unsupported',
         timestamp: new Date(event.timestamp),
+        ...(standby ? { standby: true } : {}),
       });
     }
     return result;
@@ -140,12 +162,20 @@ export class WebhooksService {
   async processIncomingMessage(
     msg: NormalizedIncomingMessage,
   ): Promise<ProcessedIncomingMessage | null> {
-    const contact = await this.upsertContact(msg);
+    const { contact, created: contactCreated } = await this.upsertContact(msg);
     const conversation = await this.upsertOpenConversation(
       contact.id,
       msg.channel,
     );
+    if (contactCreated && msg.channel === Channel.INSTAGRAM) {
+      this.enrichInstagramName(
+        contact.id,
+        conversation.id,
+        msg.externalContactId,
+      );
+    }
 
+    const standby = msg.standby === true;
     let created: { id: string };
     try {
       created = await this.prisma.message.create({
@@ -168,6 +198,7 @@ export class WebhooksService {
           crisisNew: false,
           kind: msg.kind,
           messageId: null,
+          standby,
         };
       }
       // Idempotency dışındaki hatalar yutulmaz — 500 döner, Meta retry eder.
@@ -214,6 +245,7 @@ export class WebhooksService {
       crisisNew,
       kind: msg.kind,
       messageId: created.id,
+      standby,
     };
   }
 
@@ -227,7 +259,7 @@ export class WebhooksService {
     await new Promise((resolve) => setTimeout(resolve, ECHO_RECHECK_MS));
     if (await this.isKnownMessage(echo.metaMessageId)) return;
 
-    const contact = await this.upsertContact({
+    const { contact, created: contactCreated } = await this.upsertContact({
       channel: Channel.INSTAGRAM,
       externalContactId: echo.externalContactId,
     });
@@ -235,7 +267,20 @@ export class WebhooksService {
       contact.id,
       Channel.INSTAGRAM,
     );
+    if (contactCreated) {
+      this.enrichInstagramName(
+        contact.id,
+        conversation.id,
+        echo.externalContactId,
+      );
+    }
     if (await this.linkEchoToRecentMessage(conversation.id, echo)) return;
+
+    // Gölge modda ya da bekleme kopyasında konuşma devralınmaz; eski bot
+    // ya da personel cevabı yalnızca kaydedilir.
+    const keepBot =
+      echo.standby === true ||
+      (await this.settings.getEffectiveMode()) === 'SHADOW';
 
     let created: { id: string };
     try {
@@ -252,6 +297,21 @@ export class WebhooksService {
     } catch (err) {
       if (this.isDuplicateMessage(err)) return;
       throw err;
+    }
+
+    if (keepBot) {
+      await this.prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: new Date() },
+      });
+      this.inboxEvents.emit('message.created', {
+        conversationId: conversation.id,
+        message: created,
+      });
+      this.inboxEvents.emit('conversation.updated', {
+        conversationId: conversation.id,
+      });
+      return;
     }
 
     await this.prisma.conversation.update({
@@ -313,30 +373,66 @@ export class WebhooksService {
     return true;
   }
 
+  // Yeni kişi oluşturulduysa created true döner.
   private async upsertContact(
     msg: Pick<
       NormalizedIncomingMessage,
       'channel' | 'externalContactId' | 'contactName'
     >,
-  ) {
+  ): Promise<{ contact: { id: string }; created: boolean }> {
     const where =
       msg.channel === Channel.WHATSAPP
         ? { phone: msg.externalContactId }
         : { instagramId: msg.externalContactId };
     const existing = await this.prisma.contact.findFirst({ where });
     if (existing) {
-      return this.prisma.contact.update({
+      const contact = await this.prisma.contact.update({
         where: { id: existing.id },
         data: { lastActiveAt: new Date() },
       });
+      return { contact, created: false };
     }
-    return this.prisma.contact.create({
+
+    // Yalnızca yeni WhatsApp kişisinde otomatik tanıma yapılır.
+    const contactType =
+      msg.channel === Channel.WHATSAPP
+        ? await detectContactType(this.prisma, msg.externalContactId)
+        : undefined;
+    const contact = await this.prisma.contact.create({
       data: {
         ...where,
         fullName: msg.contactName,
         channel: msg.channel,
+        ...(contactType ? { contactType } : {}),
       },
     });
+    return { contact, created: true };
+  }
+
+  // Yeni Instagram kişisinin profil adını arka planda yazar. Ad hâlâ boşsa
+  // günceller; hata olursa sessizce geçer, webhook yanıtını bekletmez.
+  private enrichInstagramName(
+    contactId: string,
+    conversationId: string,
+    igsid: string,
+  ): void {
+    void this.instagramProfile
+      .fetchName(igsid)
+      .then(async (name) => {
+        if (!name) return;
+        const result = await this.prisma.contact.updateMany({
+          where: { id: contactId, fullName: null },
+          data: { fullName: name },
+        });
+        if (result.count > 0) {
+          this.inboxEvents.emit('conversation.updated', { conversationId });
+        }
+      })
+      .catch((err) =>
+        this.logger.warn(
+          `Instagram danışan adı yazılamadı: ${(err as Error)?.name ?? 'hata'}`,
+        ),
+      );
   }
 
   // Kapanmamış (OPEN veya PENDING_AGENT) en son konuşmayı kullanır. Yoksa

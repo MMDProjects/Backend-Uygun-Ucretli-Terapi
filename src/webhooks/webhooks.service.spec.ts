@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { WebhooksService } from './webhooks.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
+import { AssistantSettingsService } from '../assistant/assistant-settings.service';
+import { InstagramProfileService } from './instagram-profile.service';
 import { MetaWebhookBody } from './dto/meta-webhook-payload.dto';
 
 function buildPrismaMock() {
@@ -11,6 +13,10 @@ function buildPrismaMock() {
       findFirst: jest.fn<any, any>(),
       create: jest.fn<any, any>(),
       update: jest.fn<any, any>(),
+      updateMany: jest.fn<any, any>(),
+    },
+    user: {
+      findMany: jest.fn<any, any>().mockResolvedValue([]),
     },
     conversation: {
       findFirst: jest.fn<any, any>(),
@@ -42,14 +48,24 @@ describe('WebhooksService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
   let service: WebhooksService;
   let inboxEvents: { emit: jest.Mock };
+  let settings: { getEffectiveMode: jest.Mock };
+  let instagramProfile: { fetchName: jest.Mock };
 
   beforeEach(() => {
     prisma = buildPrismaMock();
     inboxEvents = { emit: jest.fn<any, any>() };
+    settings = {
+      getEffectiveMode: jest.fn<any, any>().mockResolvedValue('LIVE'),
+    };
+    instagramProfile = {
+      fetchName: jest.fn<any, any>().mockResolvedValue(null),
+    };
     service = new WebhooksService(
       prisma as unknown as PrismaService,
       inboxEvents as unknown as InboxEventsService,
       buildConfigMock(),
+      settings as unknown as AssistantSettingsService,
+      instagramProfile as unknown as InstagramProfileService,
     );
   });
 
@@ -445,6 +461,8 @@ describe('WebhooksService', () => {
         prisma as unknown as PrismaService,
         inboxEvents as unknown as InboxEventsService,
         buildConfigMock({ ASSISTANT_CRISIS_LOCK_DAYS: '7' }),
+        settings as unknown as AssistantSettingsService,
+        instagramProfile as unknown as InstagramProfileService,
       );
       prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
       prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
@@ -697,6 +715,269 @@ describe('WebhooksService', () => {
       await expect(runEcho()).resolves.toBeUndefined();
       expect(prisma.conversation.update).not.toHaveBeenCalled();
       expect(inboxEvents.emit).not.toHaveBeenCalled();
+    });
+  });
+  describe('bekleme (standby) ve kişi tipi', () => {
+    const standbyBody: MetaWebhookBody = {
+      object: 'instagram',
+      entry: [
+        {
+          id: 'entry-1',
+          standby: [
+            {
+              sender: { id: 'ig-user-1' },
+              recipient: { id: 'ig-page-1' },
+              timestamp: 1700000000000,
+              message: { mid: 'mid.sb', text: 'Bekleme mesajı' },
+            },
+            {
+              sender: { id: 'ig-page-1' },
+              recipient: { id: 'ig-user-1' },
+              timestamp: 1700000000000,
+              message: { mid: 'mid.sb-echo', text: 'Eski bot', is_echo: true },
+            },
+          ],
+        },
+      ],
+    };
+
+    it('standby mesajlarını standby: true ile çıkarır, echo’yu mesaj saymaz', () => {
+      const result = service.extractMessages(standbyBody);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        externalContactId: 'ig-user-1',
+        metaMessageId: 'mid.sb',
+        standby: true,
+      });
+    });
+
+    it('standby içindeki is_echo olaylarını echo olarak standby: true ile çıkarır', () => {
+      expect(service.extractInstagramEchoes(standbyBody)).toEqual([
+        {
+          externalContactId: 'ig-user-1',
+          metaMessageId: 'mid.sb-echo',
+          content: 'Eski bot',
+          standby: true,
+        },
+      ]);
+    });
+
+    it('processIncomingMessage standby bilgisini sonuçta iletir', async () => {
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+
+      const result = await service.processIncomingMessage({
+        channel: 'INSTAGRAM' as const,
+        externalContactId: 'ig-user-1',
+        metaMessageId: 'mid.sb',
+        content: 'Merhaba',
+        kind: 'text' as const,
+        timestamp: new Date(),
+        standby: true,
+      });
+
+      expect(result).toMatchObject({ isNew: true, standby: true });
+    });
+
+    it('yeni WhatsApp kişisinde detectContactType ile tip atanır (UZMAN)', async () => {
+      prisma.user.findMany.mockResolvedValue([
+        { role: 'UZMAN', phone: '+90 555 000 11 22' },
+      ]);
+      prisma.contact.findFirst.mockResolvedValue(null);
+      prisma.contact.create.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue(null);
+      prisma.conversation.create.mockResolvedValue({ id: 'conv-1' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+
+      await service.processIncomingMessage({
+        channel: 'WHATSAPP' as const,
+        externalContactId: '905550001122',
+        metaMessageId: 'wamid.X',
+        content: 'Merhaba',
+        kind: 'text' as const,
+        timestamp: new Date(),
+      });
+
+      expect(prisma.user.findMany).toHaveBeenCalled();
+      expect(prisma.contact.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          phone: '905550001122',
+          contactType: 'UZMAN',
+        }),
+      });
+    });
+
+    it('mevcut WhatsApp kişisinde tip yeniden hesaplanmaz', async () => {
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+
+      await service.processIncomingMessage({
+        channel: 'WHATSAPP' as const,
+        externalContactId: '905550001122',
+        metaMessageId: 'wamid.Y',
+        content: 'Merhaba',
+        kind: 'text' as const,
+        timestamp: new Date(),
+      });
+
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+      expect(prisma.contact.create).not.toHaveBeenCalled();
+    });
+
+    it('yeni Instagram kişisinde profil adı yazılır ve conversation.updated yayınlanır', async () => {
+      prisma.contact.findFirst.mockResolvedValue(null);
+      prisma.contact.create.mockResolvedValue({ id: 'contact-9' });
+      prisma.conversation.findFirst.mockResolvedValue(null);
+      prisma.conversation.create.mockResolvedValue({ id: 'conv-9' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-9' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-9' });
+      prisma.contact.updateMany.mockResolvedValue({ count: 1 });
+      instagramProfile.fetchName.mockResolvedValue('Ayşe Yılmaz');
+
+      await service.processIncomingMessage({
+        channel: 'INSTAGRAM' as const,
+        externalContactId: 'ig-user-9',
+        metaMessageId: 'mid.9',
+        content: 'Merhaba',
+        kind: 'text' as const,
+        timestamp: new Date(),
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(instagramProfile.fetchName).toHaveBeenCalledWith('ig-user-9');
+      expect(prisma.contact.updateMany).toHaveBeenCalledWith({
+        where: { id: 'contact-9', fullName: null },
+        data: { fullName: 'Ayşe Yılmaz' },
+      });
+      expect(inboxEvents.emit).toHaveBeenCalledWith('conversation.updated', {
+        conversationId: 'conv-9',
+      });
+    });
+
+    it('profil adı alınamazsa kişi güncellenmez ve hata fırlatılmaz', async () => {
+      prisma.contact.findFirst.mockResolvedValue(null);
+      prisma.contact.create.mockResolvedValue({ id: 'contact-9' });
+      prisma.conversation.findFirst.mockResolvedValue(null);
+      prisma.conversation.create.mockResolvedValue({ id: 'conv-9' });
+      prisma.message.create.mockResolvedValue({ id: 'msg-9' });
+      instagramProfile.fetchName.mockRejectedValue(new Error('ağ hatası'));
+
+      const result = await service.processIncomingMessage({
+        channel: 'INSTAGRAM' as const,
+        externalContactId: 'ig-user-9',
+        metaMessageId: 'mid.9',
+        content: 'Merhaba',
+        kind: 'text' as const,
+        timestamp: new Date(),
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(result).toMatchObject({ isNew: true });
+      expect(prisma.contact.updateMany).not.toHaveBeenCalled();
+      expect(inboxEvents.emit).not.toHaveBeenCalledWith(
+        'conversation.updated',
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('Instagram echo kipleri (gölge mod ve standby)', () => {
+    const echo = {
+      externalContactId: 'ig-user-1',
+      metaMessageId: 'mid.echo',
+      content: 'Merhaba, randevunuz onaylandı',
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    async function runEcho(value: unknown) {
+      const pending = service.processInstagramEcho(value as any);
+      await jest.advanceTimersByTimeAsync(5000);
+      await pending;
+    }
+
+    function arrangeKnownContact() {
+      prisma.message.findUnique.mockResolvedValue(null);
+      prisma.contact.findFirst.mockResolvedValue({ id: 'contact-1' });
+      prisma.contact.update.mockResolvedValue({ id: 'contact-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      prisma.message.findFirst.mockResolvedValue(null);
+      prisma.message.create.mockResolvedValue({ id: 'msg-agent' });
+      prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+    }
+
+    it('SHADOW modunda mesajı kaydeder ama konuşmayı devralmaz', async () => {
+      settings.getEffectiveMode.mockResolvedValue('SHADOW');
+      arrangeKnownContact();
+
+      await runEcho(echo);
+
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          senderType: 'AGENT',
+          externalSource: 'instagram_app',
+          metaMessageId: 'mid.echo',
+        }),
+      });
+      const updateData = prisma.conversation.update.mock.calls[0][0].data;
+      expect(updateData).toEqual({ lastMessageAt: expect.any(Date) });
+      expect(inboxEvents.emit).toHaveBeenCalledWith('message.created', {
+        conversationId: 'conv-1',
+        message: { id: 'msg-agent' },
+      });
+      expect(inboxEvents.emit).not.toHaveBeenCalledWith(
+        'counts.changed',
+        expect.anything(),
+      );
+    });
+
+    it('LIVE modunda ana akıştaki gibi konuşmayı devralır', async () => {
+      settings.getEffectiveMode.mockResolvedValue('LIVE');
+      arrangeKnownContact();
+
+      await runEcho(echo);
+
+      expect(prisma.conversation.update).toHaveBeenCalledWith({
+        where: { id: 'conv-1' },
+        data: {
+          lastMessageAt: expect.any(Date),
+          isBotActive: false,
+          status: 'PENDING_AGENT',
+        },
+      });
+      expect(inboxEvents.emit).toHaveBeenCalledWith('counts.changed', {});
+    });
+
+    it('standby echo’su LIVE modunda bile konuşmayı devralmaz', async () => {
+      settings.getEffectiveMode.mockResolvedValue('LIVE');
+      arrangeKnownContact();
+
+      await runEcho({ ...echo, standby: true });
+
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ externalSource: 'instagram_app' }),
+      });
+      const updateData = prisma.conversation.update.mock.calls[0][0].data;
+      expect(updateData).not.toHaveProperty('status');
+      expect(updateData).not.toHaveProperty('isBotActive');
+      expect(inboxEvents.emit).not.toHaveBeenCalledWith(
+        'counts.changed',
+        expect.anything(),
+      );
     });
   });
 });

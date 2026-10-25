@@ -4,6 +4,9 @@ import { InboxEventsModule } from '../inbox-events/inbox-events.module';
 import { MailModule } from '../mail/mail.module';
 import { MetaSenderService } from '../webhooks/meta-sender.service';
 import { AssistantService } from './assistant.service';
+import { AssistantSettingsController } from './assistant-settings.controller';
+import { AssistantSettingsService } from './assistant-settings.service';
+import { CrisisAlertService } from './crisis-alert.service';
 import { HandoffService } from './handoff.service';
 import { KnowledgeService } from './knowledge.service';
 import { LeadsService } from './leads.service';
@@ -12,6 +15,7 @@ import { PromptBuilder } from './prompt-builder';
 
 @Module({
   imports: [NotificationsModule, MailModule, InboxEventsModule],
+  controllers: [AssistantSettingsController],
   providers: [
     OpenAiClient,
     KnowledgeService,
@@ -19,6 +23,8 @@ import { PromptBuilder } from './prompt-builder';
     LeadsService,
     HandoffService,
     MetaSenderService,
+    AssistantSettingsService,
+    CrisisAlertService,
     AssistantService,
   ],
   exports: [
@@ -26,6 +32,8 @@ import { PromptBuilder } from './prompt-builder';
     KnowledgeService,
     HandoffService,
     MetaSenderService,
+    AssistantSettingsService,
+    CrisisAlertService,
   ],
 })
 export class AssistantModule {}

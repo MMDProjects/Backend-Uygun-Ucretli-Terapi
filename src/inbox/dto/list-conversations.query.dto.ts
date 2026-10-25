@@ -10,7 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { Channel } from '@prisma/client';
+import { Channel, ContactType } from '@prisma/client';
 
 export class ListConversationsQueryDto {
   @IsOptional()
@@ -20,6 +20,10 @@ export class ListConversationsQueryDto {
   @IsOptional()
   @IsEnum(Channel)
   channel?: Channel;
+
+  @IsOptional()
+  @IsEnum(ContactType)
+  contactType?: ContactType;
 
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')

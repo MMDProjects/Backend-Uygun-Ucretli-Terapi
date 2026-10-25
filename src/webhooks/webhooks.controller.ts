@@ -28,6 +28,8 @@ interface PendingAssistantTask {
   kind: MessageKind;
   crisis: boolean;
   crisisNew: boolean;
+  // Instagram bekleme modundan geldi: Elif yalnızca taslak üretir.
+  standby: boolean;
 }
 
 @ApiTags('webhooks')
@@ -90,6 +92,7 @@ export class WebhooksController {
           kind: outcome.kind,
           crisis: outcome.crisis,
           crisisNew: outcome.crisisNew,
+          standby: outcome.standby,
         });
       }
     }
@@ -122,6 +125,7 @@ export class WebhooksController {
     if (!item.crisis) {
       return this.assistant.handleIncoming(item.conversationId, item.content, {
         kind: item.kind,
+        draftOnly: item.standby === true,
       });
     }
     return item.crisisNew
