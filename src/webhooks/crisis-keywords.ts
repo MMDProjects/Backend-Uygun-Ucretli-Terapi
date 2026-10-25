@@ -13,6 +13,9 @@
  * indirgenir: danışanlar sık sık Türkçe karakter kullanmadan yazar
  * ("yasamak istemiyorum") ve JS regex'teki \b Türkçe harfleri kelime
  * karakteri saymadığı için "ö"/"ç" ile başlayan kalıplar hiç eşleşmez.
+ *
+ * "intihar" tek başına aranmaz: "intihar konulu bir film" gibi cümleler
+ * yanlış alarm olmasın diye yalnızca niyet/fiil ekleriyle eşleşir.
  */
 const TURKISH_TO_ASCII: Record<string, string> = {
   ı: 'i',
@@ -32,21 +35,36 @@ export function normalizeForCrisis(text: string): string {
 }
 
 export const CRISIS_KEYWORDS: RegExp[] = [
+  // Kendine zarar
   /\bkendimi\s+oldur/,
-  /\bintihar/,
-  /\bozkiyim/,
+  /\bintihar(?:a|i|ini)?\s+(?:et|dus|plan|niyet|karar|meyil|yonel)/,
+  /\boz\s*kiyim/,
   /\bkendime\s+zarar/,
   /\byasamak\s+istemiyorum/,
   /\bolmek\s+istiyorum/,
   /\bolsem\s+(daha\s+)?iyi/,
   /\bhayatima\s+son/,
   /\bbicakla\s+kendimi/,
-  /\bilac\s+icip\s+ol/,
+  /\b(?:hap|ilac)\s+icip\s+ol/,
   /\bartik\s+dayanamiyorum.{0,20}(olmek|bitirmek|son)/,
   /\bkendimi\s+kesiyorum/,
   /\bkendimi\s+asacagim/,
+  /\bkendimi\s+as(?:ay|ac|mak|iyorum)/,
+  /\bcan(?:ima|imi)\s+kiy/,
+  /\bbile[kg][a-z]{0,8}\s+kes/,
+  /\bkeske\s+(?:ben\s+)?(?:olsem|olseydim|(?:hic\s+)?dogmasaydim)/,
+  /\byasam(?:anin|amin)\s+anlami\s+yok/,
+  /\bher\s+seyi\s+bitirmek/,
   /\bveda\s+mektubu/,
   /\bbu\s+dunyadan\s+gitmek\s+istiyorum/,
+  // Başkasına zarar
+  /\b(?:onu|seni|sizi)\s+oldurecegim/,
+  /\boldurmek\s+istiyorum/,
+  // Şiddet ve istismar
+  /\bbeni\s+dov(?:uyor|du)/,
+  /\bsiddet\s+(?:uygul|goruyor|gor)/,
+  /\b(?:taciz|istismar)\s+(?:edil|ediyor|etti|maruz)/,
+  /\b(?:tacize|istismara)\s+ugr/,
 ];
 
 export function containsCrisisLanguage(text: string): boolean {

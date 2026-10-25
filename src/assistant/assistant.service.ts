@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Channel, Contact, Conversation, SenderType } from '@prisma/client';
+import {
+  AssistantMode,
+  Channel,
+  Contact,
+  ContactType,
+  Conversation,
+  Prisma,
+  SenderType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MetaSenderService } from '../webhooks/meta-sender.service';
@@ -16,16 +24,87 @@ import { LeadsService, LeadToolArgs } from './leads.service';
 import { HandoffService } from './handoff.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { CRISIS_MESSAGE } from './crisis-message';
+import { AssistantSettingsService } from './assistant-settings.service';
+import { CrisisAlertService } from './crisis-alert.service';
 
 const MAX_TOOL_TURNS = 3;
 const DEFAULT_HISTORY_LIMIT = 20;
+const DEFAULT_DEBOUNCE_MS = 5000;
+const DEFAULT_MAX_REPLIES_PER_HOUR = 20;
+const DEFAULT_INSTAGRAM_MAX_CHARS = 1000;
+const WHATSAPP_MAX_CHARS = 4096;
+const REPLY_WINDOW_MS = 60 * 60 * 1000;
+const UNSUPPORTED_PREFIX = '[desteklenmeyen mesaj tipi';
+export const MEDIA_REPLY =
+  'Sesli mesaj ve görselleri şu an açamıyorum. Yazılı olarak iletirseniz hemen yardımcı olayım; dilerseniz sizi ekibimize de aktarabilirim.';
+const MEDIA_HANDOFF_SUMMARY =
+  'Danışan medya mesajı gönderiyor (sesli mesaj/görsel)';
+const SHADOW_TOOL_RESULT =
+  'Gölge mod: işlem kaydedilmedi, danışana normal şekilde cevap yaz.';
+// Gölge modda kayıt yerine taslağa yazılan araçlar.
+const DRAFT_TOOL_NAMES = ['lead_tool', 'personel_aktar_tool'];
 
 type ConversationWithContact = Conversation & { contact: Contact };
+type MessageKind = 'text' | 'unsupported';
+type DraftMode = 'SHADOW' | 'STANDBY';
+interface DraftTool {
+  name: string;
+  args: Prisma.InputJsonObject;
+}
+interface ToolContext {
+  shadow: boolean;
+  calls: DraftTool[];
+}
+interface PendingTurn {
+  timer: NodeJS.Timeout;
+  hasText: boolean;
+  draftOnly: boolean;
+}
+
+const isUnsupported = (content: string): boolean =>
+  content.startsWith(UNSUPPORTED_PREFIX);
+
+// Uzun metni kanal sınırına göre parçalar: önce boş satır, sonra cümle sonu,
+// en son boşluk. Hiçbir parça sınırı aşmaz.
+export function splitForChannel(text: string, maxChars: number): string[] {
+  if (text.length <= maxChars) {
+    return [text];
+  }
+  const parts: string[] = [];
+  let rest = text.replace(/\r\n/g, '\n').trim();
+  while (rest.length > maxChars) {
+    const cut = cutPoint(rest, maxChars);
+    parts.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) {
+    parts.push(rest);
+  }
+  return parts;
+}
+
+function cutPoint(text: string, max: number): number {
+  const paragraph = text.lastIndexOf('\n\n', max);
+  if (paragraph > 0) {
+    return paragraph;
+  }
+  for (let i = Math.min(max - 1, text.length - 2); i > 0; i--) {
+    if ('.!?'.includes(text[i]) && /\s/.test(text[i + 1])) {
+      return i + 1;
+    }
+  }
+  const space = text.lastIndexOf(' ', max);
+  if (space > 0) {
+    return space;
+  }
+  return max;
+}
 
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
   private readonly queues = new Map<string, Promise<void>>();
+  private readonly pendingTurns = new Map<string, PendingTurn>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -38,16 +117,64 @@ export class AssistantService {
     private readonly metaSender: MetaSenderService,
     private readonly notifications: NotificationsService,
     private readonly inboxEvents: InboxEventsService,
+    private readonly settings: AssistantSettingsService,
+    private readonly crisisAlert: CrisisAlertService,
   ) {}
 
-  handleIncoming(conversationId: string, latestText: string): Promise<void> {
-    return this.enqueue(conversationId, () =>
-      this.runIncoming(conversationId, latestText),
-    );
+  // Cevabı hemen üretmez; süre dolunca tek tur çalıştırır.
+  // draftOnly: Instagram bekleme (standby) mesajı; cevap yalnız taslak olur.
+  handleIncoming(
+    conversationId: string,
+    latestText: string,
+    opts?: { kind?: MessageKind; draftOnly?: boolean },
+  ): Promise<void> {
+    const kind = opts?.kind ?? 'text';
+    const draftOnly = opts?.draftOnly === true;
+    const delay = this.debounceMs();
+    if (delay <= 0) {
+      return this.enqueue(conversationId, () =>
+        this.runIncoming(conversationId, latestText, kind, draftOnly),
+      );
+    }
+
+    const previous = this.pendingTurns.get(conversationId);
+    if (previous) {
+      clearTimeout(previous.timer);
+    }
+    const hasText = previous?.hasText === true || kind === 'text';
+    // Bekleme penceresinde bir mesaj bile taslak ise tur taslak olur.
+    const pendingDraftOnly = previous?.draftOnly === true || draftOnly;
+    const timer = setTimeout(() => {
+      this.pendingTurns.delete(conversationId);
+      void this.enqueue(conversationId, () =>
+        this.runIncoming(
+          conversationId,
+          latestText,
+          hasText ? 'text' : 'unsupported',
+          pendingDraftOnly,
+        ),
+      );
+    }, delay);
+    this.pendingTurns.set(conversationId, {
+      timer,
+      hasText,
+      draftOnly: pendingDraftOnly,
+    });
+    return Promise.resolve();
   }
 
-  handleCrisis(conversationId: string): Promise<void> {
-    return this.enqueue(conversationId, () => this.runCrisis(conversationId));
+  handleCrisis(
+    conversationId: string,
+    opts?: { repeat?: boolean },
+  ): Promise<void> {
+    const pending = this.pendingTurns.get(conversationId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pendingTurns.delete(conversationId);
+    }
+    return this.enqueue(conversationId, () =>
+      this.runCrisis(conversationId, opts?.repeat === true),
+    );
   }
 
   private enqueue(
@@ -77,43 +204,71 @@ export class AssistantService {
     return !!current?.isBotActive;
   }
 
-  private isEnabled(): boolean {
-    return this.config.get<string>('ASSISTANT_ENABLED') === 'true';
+  // Mod okunamazsa güvenli tarafta kalıp kapalı sayılır.
+  private async currentMode(): Promise<AssistantMode> {
+    try {
+      return await this.settings.getEffectiveMode();
+    } catch (err) {
+      this.logger.error('Asistan modu okunamadı', err as Error);
+      return AssistantMode.OFF;
+    }
   }
 
-  private async runCrisis(conversationId: string): Promise<void> {
-    if (this.isEnabled()) {
-      const conversation = await this.loadConversation(conversationId);
-      if (conversation) {
-        const recipientId = this.recipientId(conversation);
-        if (recipientId) {
-          const sent = await this.metaSender.sendText(
-            conversation.channel,
-            recipientId,
-            CRISIS_MESSAGE,
-          );
-          if (sent) {
-            await this.saveBotMessage(conversationId, CRISIS_MESSAGE);
-          }
-        }
-      }
+  private async runCrisis(
+    conversationId: string,
+    repeat: boolean,
+  ): Promise<void> {
+    if (!repeat) {
+      await this.sendCrisisMessage(conversationId);
     }
+    await this.crisisAlert.alert(
+      conversationId,
+      repeat ? 'repeat' : 'detected',
+    );
+    const text = repeat
+      ? `Kriz konuşmasında yeni kriz ifadesi, konuşma: ${conversationId}`
+      : `Kriz ifadesi tespit edildi, konuşma: ${conversationId}`;
+    await this.notifications.notifyAdmins('DANGER_PANIC', text).catch(() => {});
+  }
 
-    await this.notifications
-      .notifyAdmins(
-        'DANGER_PANIC',
-        `Kriz ifadesi tespit edildi, konuşma: ${conversationId}`,
-      )
-      .catch(() => {});
+  // Kriz mesajı aydınlatmadan önce gider; aydınlatma bu yolda gönderilmez.
+  private async sendCrisisMessage(conversationId: string): Promise<void> {
+    const mode = await this.currentMode();
+    if (mode === AssistantMode.OFF) {
+      return;
+    }
+    const conversation = await this.loadConversation(conversationId);
+    if (!conversation) {
+      return;
+    }
+    if (conversation.contact.contactType !== ContactType.DANISAN) {
+      this.logger.log(
+        `Kriz mesajı atlandı, kişi danışan değil (${conversationId})`,
+      );
+      return;
+    }
+    if (mode === AssistantMode.SHADOW) {
+      await this.saveDraft(conversation, CRISIS_MESSAGE, 'SHADOW', []);
+      return;
+    }
+    if (!(await this.deliver(conversation, CRISIS_MESSAGE))) {
+      this.logger.warn(`Kriz mesajı gönderilemedi (${conversationId})`);
+    }
   }
 
   private async runIncoming(
     conversationId: string,
     latestText: string,
+    kind: MessageKind,
+    draftOnly: boolean,
   ): Promise<void> {
-    if (!this.isEnabled()) {
+    const mode = await this.currentMode();
+    if (mode === AssistantMode.OFF) {
       return;
     }
+    // Gölge modda ve Instagram bekleme turunda cevap yalnızca taslak olur.
+    const shadow = draftOnly || mode === AssistantMode.SHADOW;
+    const draftMode: DraftMode = draftOnly ? 'STANDBY' : 'SHADOW';
 
     try {
       const conversation = await this.loadConversation(conversationId);
@@ -124,13 +279,32 @@ export class AssistantService {
       ) {
         return;
       }
+      // Uzman ve iç ekip mesajlarına Elif cevap vermez, personele devreder.
+      if (conversation.contact.contactType !== ContactType.DANISAN) {
+        if (!shadow) {
+          await this.handoffService.handoff(
+            conversationId,
+            'uzman_ekip',
+            'Uzman veya iç ekip mesajı — Elif cevap vermez',
+          );
+        }
+        return;
+      }
+      if (!shadow && (await this.reachedReplyLimit(conversationId))) {
+        return;
+      }
+      if (kind === 'unsupported') {
+        await this.runUnsupported(conversation, shadow, draftMode);
+        return;
+      }
 
+      const query = await this.buildSearchQuery(conversationId, latestText);
       const history = await this.loadHistory(conversationId);
-      const search = await this.knowledge.search(latestText);
+      const search = await this.knowledge.search(query);
       if (search.items.length === 0) {
         await this.knowledge.recordUnanswered(
           conversationId,
-          latestText,
+          query,
           search.topScore,
         );
       }
@@ -150,10 +324,11 @@ export class AssistantService {
       const tags = `${this.promptBuilder.buildChannelTag(conversation.channel, conversation.contact.phone)} ${this.promptBuilder.buildNowTag(new Date())}`;
       this.appendToLastUser(messages, latestText, tags);
 
-      const { text: finalText, handedOffByTool } = await this.runToolLoop(
-        conversation,
-        messages,
-      );
+      const {
+        text: finalText,
+        handedOffByTool,
+        calls,
+      } = await this.runToolLoop(conversation, messages, shadow);
       // LLM çalışırken personel panelden devraldıysa bot cevabı gönderilmez.
       if (!handedOffByTool && !(await this.isStillBotActive(conversationId))) {
         this.logger.log(
@@ -162,6 +337,10 @@ export class AssistantService {
         return;
       }
       if (!finalText) {
+        if (shadow) {
+          this.logger.warn(`Taslak için geçerli yanıt yok (${conversationId})`);
+          return;
+        }
         await this.handoffService.handoff(
           conversationId,
           'bilinmeyen_konu',
@@ -170,15 +349,12 @@ export class AssistantService {
         return;
       }
 
-      const recipientId = this.recipientId(conversation);
-      const sent = recipientId
-        ? await this.metaSender.sendText(
-            conversation.channel,
-            recipientId,
-            finalText,
-          )
-        : false;
-      if (!sent) {
+      if (shadow) {
+        await this.saveDraft(conversation, finalText, draftMode, calls);
+        return;
+      }
+
+      if (!(await this.deliverWithNotice(conversation, finalText))) {
         this.logger.warn(
           `Yanıt gönderilemedi, personele devrediliyor (${conversationId})`,
         );
@@ -187,9 +363,7 @@ export class AssistantService {
           'bilinmeyen_konu',
           'Asistan yanıtı danışana gönderilemedi',
         );
-        return;
       }
-      await this.saveBotMessage(conversationId, finalText);
     } catch (err) {
       this.logger.error(
         `Asistan yanıtı üretilemedi (${conversationId})`,
@@ -206,19 +380,123 @@ export class AssistantService {
     }
   }
 
+  // Medya mesajına LLM ya da bilgi bankası karışmadan yanıt verir.
+  private async runUnsupported(
+    conversation: ConversationWithContact,
+    shadow: boolean,
+    draftMode: DraftMode,
+  ): Promise<void> {
+    const conversationId = conversation.id;
+    if (shadow) {
+      await this.saveDraft(conversation, MEDIA_REPLY, draftMode, []);
+      return;
+    }
+    if (!(await this.isStillBotActive(conversationId))) {
+      return;
+    }
+    // Taslaklar sayılmaz; yalnızca gerçekten gönderilen sabit cevap bakılır.
+    const replied = await this.prisma.message.findFirst({
+      where: {
+        conversationId,
+        senderType: SenderType.BOT,
+        content: MEDIA_REPLY,
+        isDraft: false,
+      },
+      select: { id: true },
+    });
+    if (replied) {
+      await this.handoffService.handoff(
+        conversationId,
+        'bilinmeyen_konu',
+        MEDIA_HANDOFF_SUMMARY,
+      );
+      return;
+    }
+    if (!(await this.deliverWithNotice(conversation, MEDIA_REPLY))) {
+      await this.handoffService.handoff(
+        conversationId,
+        'bilinmeyen_konu',
+        'Asistan yanıtı danışana gönderilemedi',
+      );
+    }
+  }
+
+  // Son gönderilen BOT/AGENT mesajından sonraki danışan mesajlarının birleşimi.
+  private async buildSearchQuery(
+    conversationId: string,
+    latestText: string,
+  ): Promise<string> {
+    const lastReply = await this.prisma.message.findFirst({
+      where: {
+        conversationId,
+        senderType: { in: [SenderType.BOT, SenderType.AGENT] },
+        isDraft: false,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const rows = await this.prisma.message.findMany({
+      where: {
+        conversationId,
+        senderType: SenderType.CLIENT,
+        ...(lastReply ? { createdAt: { gt: lastReply.createdAt } } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { content: true },
+    });
+    const texts = rows
+      .map((row) => row.content)
+      .filter((content) => !isUnsupported(content));
+    return texts.length > 0 ? texts.join('\n') : latestText;
+  }
+
+  // Son saatte gönderilen BOT cevabı sınıra ulaştıysa personele devreder.
+  // Taslaklar sayılmaz.
+  private async reachedReplyLimit(conversationId: string): Promise<boolean> {
+    const count = await this.prisma.message.count({
+      where: {
+        conversationId,
+        senderType: SenderType.BOT,
+        isDraft: false,
+        createdAt: { gte: new Date(Date.now() - REPLY_WINDOW_MS) },
+      },
+    });
+    if (count < this.maxRepliesPerHour()) {
+      return false;
+    }
+    await this.handoffService.handoff(
+      conversationId,
+      'bilinmeyen_konu',
+      'Saatlik bot cevap sınırı aşıldı',
+    );
+    return true;
+  }
+
   private async runToolLoop(
     conversation: ConversationWithContact,
     messages: OpenAiMessage[],
-  ): Promise<{ text: string | null; handedOffByTool: boolean }> {
+    shadow: boolean,
+  ): Promise<{
+    text: string | null;
+    handedOffByTool: boolean;
+    calls: DraftTool[];
+  }> {
     const tools = ASSISTANT_TOOLS as OpenAiToolSchema[];
+    const ctx: ToolContext = { shadow, calls: [] };
     let handedOffByTool = false;
 
     for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
       const result = await this.openai.chat({ messages, tools });
       if (result.toolCalls.length === 0) {
-        return { text: result.content?.trim() || null, handedOffByTool };
+        return {
+          text: result.content?.trim() || null,
+          handedOffByTool,
+          calls: ctx.calls,
+        };
       }
+      // Gölge modda devir yapılmaz; bu yüzden bayrak kalkmaz.
       if (
+        !shadow &&
         result.toolCalls.some((call) => call.name === 'personel_aktar_tool')
       ) {
         handedOffByTool = true;
@@ -239,25 +517,37 @@ export class AssistantService {
           conversation,
           call.name,
           call.arguments,
+          ctx,
         );
         messages.push({ role: 'tool', tool_call_id: call.id, content: output });
       }
     }
 
     const last = await this.openai.chat({ messages });
-    return { text: last.content?.trim() || null, handedOffByTool };
+    return {
+      text: last.content?.trim() || null,
+      handedOffByTool,
+      calls: ctx.calls,
+    };
   }
 
   private async runTool(
     conversation: ConversationWithContact,
     name: string,
     rawArguments: string,
+    ctx: ToolContext,
   ): Promise<string> {
     let args: Record<string, unknown>;
     try {
       args = JSON.parse(rawArguments) as Record<string, unknown>;
     } catch {
       return 'Araç argümanları geçersiz JSON. Bilgileri düzeltip tekrar deneyin.';
+    }
+
+    // Gölge modda kayıt ya da devir yapılmaz; çağrı taslağa yazılır.
+    if (ctx.shadow && DRAFT_TOOL_NAMES.includes(name)) {
+      ctx.calls.push({ name, args: args as Prisma.InputJsonObject });
+      return SHADOW_TOOL_RESULT;
     }
 
     if (name === 'lead_tool') {
@@ -297,7 +587,7 @@ export class AssistantService {
   private async loadHistory(conversationId: string): Promise<OpenAiMessage[]> {
     const limit = this.historyLimit();
     const rows = await this.prisma.message.findMany({
-      where: { conversationId },
+      where: { conversationId, isDraft: false },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
@@ -305,7 +595,9 @@ export class AssistantService {
     const messages: OpenAiMessage[] = [];
     for (const row of [...rows].reverse()) {
       if (row.senderType === SenderType.CLIENT) {
-        messages.push({ role: 'user', content: row.content });
+        if (!isUnsupported(row.content)) {
+          messages.push({ role: 'user', content: row.content });
+        }
       } else {
         messages.push({ role: 'assistant', content: row.content });
       }
@@ -329,18 +621,114 @@ export class AssistantService {
     messages.push({ role: 'user', content: `${latestText}${suffix}` });
   }
 
+  // Aydınlatma metni, ilk gerçek cevaptan önce kişiye bir kez gönderilir.
+  private async deliverWithNotice(
+    conversation: ConversationWithContact,
+    text: string,
+  ): Promise<boolean> {
+    await this.sendNoticeOnce(conversation);
+    return this.deliver(conversation, text);
+  }
+
+  // Aydınlatma gönderilemezse hata vermez; bir sonraki cevapta tekrar denenir.
+  private async sendNoticeOnce(
+    conversation: ConversationWithContact,
+  ): Promise<void> {
+    if (conversation.contact.noticeSentAt) {
+      return;
+    }
+    let notice: string | null;
+    try {
+      notice = (await this.settings.getSettings()).noticeText;
+    } catch (err) {
+      this.logger.error('Aydınlatma metni okunamadı', err as Error);
+      return;
+    }
+    if (!notice) {
+      return;
+    }
+    if (!(await this.deliver(conversation, notice))) {
+      this.logger.warn(`Aydınlatma metni gönderilemedi (${conversation.id})`);
+      return;
+    }
+    try {
+      await this.prisma.contact.update({
+        where: { id: conversation.contact.id },
+        data: { noticeSentAt: new Date() },
+      });
+    } catch (err) {
+      this.logger.error('Aydınlatma kaydı işaretlenemedi', err as Error);
+    }
+  }
+
+  // Metni kanal sınırına göre bölüp sırayla gönderir. Bir parça başarısız
+  // olursa kalanlar gönderilmez ve false döner.
+  private async deliver(
+    conversation: ConversationWithContact,
+    text: string,
+  ): Promise<boolean> {
+    const recipientId = this.recipientId(conversation);
+    if (!recipientId) {
+      return false;
+    }
+    const parts = splitForChannel(text, this.maxCharsFor(conversation.channel));
+    for (const part of parts) {
+      const res = await this.metaSender.sendText(
+        conversation.channel,
+        recipientId,
+        part,
+      );
+      if (!res.ok) {
+        return false;
+      }
+      await this.saveBotMessage(conversation.id, part, res.messageId);
+    }
+    return true;
+  }
+
   private async saveBotMessage(
     conversationId: string,
     content: string,
+    metaMessageId?: string,
   ): Promise<void> {
     const message = await this.prisma.message.create({
-      data: { conversationId, senderType: SenderType.BOT, content },
+      data: {
+        conversationId,
+        senderType: SenderType.BOT,
+        content,
+        metaMessageId: metaMessageId ?? null,
+      },
     });
     await this.prisma.conversation.update({
       where: { id: conversationId },
       data: { lastMessageAt: new Date() },
     });
     this.inboxEvents.emit('message.created', { conversationId, message });
+  }
+
+  // Taslak: gönderilmez, lastMessageAt güncellenmez. Panelde kesik çizgili görünür.
+  private async saveDraft(
+    conversation: ConversationWithContact,
+    content: string,
+    mode: DraftMode,
+    calls: DraftTool[],
+  ): Promise<void> {
+    const message = await this.prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        senderType: SenderType.BOT,
+        content,
+        isDraft: true,
+        draftMeta: {
+          mode,
+          tools: calls.map((call) => ({ name: call.name, args: call.args })),
+        },
+      },
+    });
+    this.inboxEvents.emit('message.created', {
+      conversationId: conversation.id,
+      message,
+    });
   }
 
   private recipientId(conversation: ConversationWithContact): string | null {
@@ -353,13 +741,30 @@ export class AssistantService {
     return null;
   }
 
-  private historyLimit(): number {
-    const raw = Number(
-      this.config.get<string>(
-        'ASSISTANT_HISTORY_LIMIT',
-        String(DEFAULT_HISTORY_LIMIT),
-      ),
+  private maxCharsFor(channel: Channel): number {
+    return channel === Channel.INSTAGRAM
+      ? this.intSetting('INSTAGRAM_MAX_CHARS', DEFAULT_INSTAGRAM_MAX_CHARS, 1)
+      : WHATSAPP_MAX_CHARS;
+  }
+
+  private debounceMs(): number {
+    return this.intSetting('ASSISTANT_DEBOUNCE_MS', DEFAULT_DEBOUNCE_MS, 0);
+  }
+
+  private maxRepliesPerHour(): number {
+    return this.intSetting(
+      'ASSISTANT_MAX_REPLIES_PER_HOUR',
+      DEFAULT_MAX_REPLIES_PER_HOUR,
+      1,
     );
-    return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_HISTORY_LIMIT;
+  }
+
+  private historyLimit(): number {
+    return this.intSetting('ASSISTANT_HISTORY_LIMIT', DEFAULT_HISTORY_LIMIT, 1);
+  }
+
+  private intSetting(key: string, fallback: number, min: number): number {
+    const raw = Number(this.config.get<string>(key, String(fallback)));
+    return Number.isInteger(raw) && raw >= min ? raw : fallback;
   }
 }

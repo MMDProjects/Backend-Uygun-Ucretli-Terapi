@@ -12,6 +12,8 @@ import { CRISIS_MESSAGE } from './crisis-message';
 
 const PRICE_PLACEHOLDER = '{{FIYAT_TABLOSU}}';
 const PROMPT_MD_PATH = path.resolve(__dirname, '../../../prompt.md');
+// prompt.md repo dışında; CI'da yoksa yalnızca karşılaştırma testi atlanır
+const hasPromptMd = fs.existsSync(PROMPT_MD_PATH);
 
 function buildPrismaMock() {
   return {
@@ -111,18 +113,36 @@ describe('PromptBuilder', () => {
   });
 
   describe('buildChannelTag', () => {
-    it('WhatsApp için prompttaki numaralı kanal etiketini birebir üretir', () => {
+    it('WhatsApp için numarayı yazmadan yalnızca var/yok bilgisini üretir', () => {
       const { builder } = build();
-      expect(builder.buildChannelTag(Channel.WHATSAPP, '905550001122')).toBe(
-        '[KANAL: WhatsApp · Müşterinin numarası: 905550001122]',
+      const tag = builder.buildChannelTag(Channel.WHATSAPP, '905550001122');
+      expect(tag).toBe(
+        '[KANAL: WhatsApp · Müşterinin telefon numarası sistemde mevcut.]',
+      );
+      expect(tag).not.toMatch(/d{4}/);
+    });
+
+    it('WhatsApp numarası yoksa bunu belirtir', () => {
+      const { builder } = build();
+      expect(builder.buildChannelTag(Channel.WHATSAPP, null)).toBe(
+        '[KANAL: WhatsApp · Müşterinin telefon numarası yok.]',
       );
     });
 
-    it('Instagram için prompttaki numarasız kanal etiketini birebir üretir', () => {
+    it('Instagram için numarasız kanal etiketini üretir', () => {
       const { builder } = build();
       expect(builder.buildChannelTag(Channel.INSTAGRAM, null)).toBe(
         '[KANAL: Instagram DM · Müşterinin telefon numarası sistemde YOK.]',
       );
+    });
+
+    it('Instagram numarası kayıtlıysa yalnızca varlığını belirtir', () => {
+      const { builder } = build();
+      const tag = builder.buildChannelTag(Channel.INSTAGRAM, '905550001122');
+      expect(tag).toBe(
+        '[KANAL: Instagram DM · Müşterinin telefon numarası sistemde mevcut.]',
+      );
+      expect(tag).not.toMatch(/d{4}/);
     });
   });
 
@@ -139,15 +159,21 @@ describe('PromptBuilder', () => {
   });
 
   describe('prompt dosyası', () => {
-    it('prompt.md fiyat tablosu dışındaki tüm metni ELIF_SYSTEM_PROMPT içinde taşır', () => {
-      const normalize = (text: string) => text.replace(/\r\n/g, '\n');
-      const source = normalize(fs.readFileSync(PROMPT_MD_PATH, 'utf8'));
-      const rebuilt = normalize(
-        ELIF_SYSTEM_PROMPT.replace(PRICE_PLACEHOLDER, () => PROMPT_PRICE_TABLE),
-      );
+    (hasPromptMd ? it : it.skip)(
+      'prompt.md fiyat tablosu dışındaki tüm metni ELIF_SYSTEM_PROMPT içinde taşır',
+      () => {
+        const normalize = (text: string) => text.replace(/\r\n/g, '\n');
+        const source = normalize(fs.readFileSync(PROMPT_MD_PATH, 'utf8'));
+        const rebuilt = normalize(
+          ELIF_SYSTEM_PROMPT.replace(
+            PRICE_PLACEHOLDER,
+            () => PROMPT_PRICE_TABLE,
+          ),
+        );
 
-      expect(rebuilt).toBe(source);
-    });
+        expect(rebuilt).toBe(source);
+      },
+    );
 
     it('CRISIS_MESSAGE sabiti tanımlı ve boş değil', () => {
       expect(CRISIS_MESSAGE.length).toBeGreaterThan(0);

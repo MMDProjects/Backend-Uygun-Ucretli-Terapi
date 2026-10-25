@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -7,6 +8,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { ContactType } from '@prisma/client';
 
 export class UpdateContactDto {
   @IsOptional()
@@ -30,4 +32,9 @@ export class UpdateContactDto {
   @IsString()
   @MaxLength(5000)
   notes?: string;
+
+  // Uzman/ekip işaretleri konuşma durumunu değiştirmez.
+  @IsOptional()
+  @IsEnum(ContactType)
+  contactType?: ContactType;
 }
