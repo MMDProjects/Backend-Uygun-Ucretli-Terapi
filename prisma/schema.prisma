@@ -98,6 +98,8 @@ model User {
   conversationReads     ConversationRead[]
   cannedResponses       CannedResponse[]   @relation("CannedResponseCreator")
   assistantPrompts      AssistantPrompt[]  @relation("AssistantPromptCreator")
+  contactLists          ContactList[]      @relation("ContactListCreator")
+  campaigns             Campaign[]         @relation("CampaignCreator")
 
   @@map("users")
 }
@@ -383,24 +385,33 @@ model Notification {
 }
 
 model SystemSetting {
-  id                  String        @id @default(uuid())
-  whatsappNumber      String
-  instagramUrl        String
-  standardPrice       Decimal       @default(1500.00) @db.Decimal(10, 2)
-  discountedPrice     Decimal       @default(1000.00) @db.Decimal(10, 2)
-  logoUrl             String
-  videoUrl            String?
-  announcementItems   Json          @default("[]")
-  wheelSegments       Json          @default("[]")
-  wheelWinnerIndices  Json          @default("[]")
-  loginPopupSettings  Json          @default("{}")
-  staticPageContent   Json?
-  kvkkContent         Json?
-  kvkkVersion         String?
-  assistantMode       AssistantMode @default(OFF)
-  assistantNoticeText String?       @db.Text
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  id                          String        @id @default(uuid())
+  whatsappNumber              String
+  instagramUrl                String
+  standardPrice               Decimal       @default(1500.00) @db.Decimal(10, 2)
+  discountedPrice             Decimal       @default(1000.00) @db.Decimal(10, 2)
+  logoUrl                     String
+  videoUrl                    String?
+  announcementItems           Json          @default("[]")
+  wheelSegments               Json          @default("[]")
+  wheelWinnerIndices          Json          @default("[]")
+  loginPopupSettings          Json          @default("{}")
+  staticPageContent           Json?
+  kvkkContent                 Json?
+  kvkkVersion                 String?
+  assistantMode               AssistantMode @default(OFF)
+  assistantNoticeText         String?       @db.Text
+  // Randevu hatırlatmaları ve kampanyalar varsayılan kapalı.
+  reminderEnabled             Boolean       @default(false)
+  reminderDayBeforeTemplateId String?
+  reminderShortTemplateId     String?
+  reminderShortMinutes        Int           @default(60)
+  reminderQuietStart          Int           @default(21)
+  reminderQuietEnd            Int           @default(9)
+  campaignsEnabled            Boolean       @default(false)
+  campaignUnitPrice           Decimal?      @db.Decimal(10, 4)
+  createdAt                   DateTime      @default(now())
+  updatedAt                   DateTime      @updatedAt
 
   @@map("system_settings")
 }
@@ -450,13 +461,19 @@ model Contact {
   lifecycleStatus ContactLifecycle @default(POTANSIYEL)
   lastSummary     String?          @db.Text
   lastSummaryAt   DateTime?
+  // "DUR" ile çıkış; onay (opt-in) alanları ertelendi.
+  reminderOptOut  Boolean          @default(false)
+  marketingOptOut Boolean          @default(false)
+  optOutAt        DateTime?
 
-  conversations Conversation[]
-  userId        String?        @unique
-  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  appointments  Appointment[]
-  leads         Lead[]
-  tags          ContactTag[]
+  conversations      Conversation[]
+  userId             String?             @unique
+  user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointments       Appointment[]
+  leads              Lead[]
+  tags               ContactTag[]
+  listMemberships    ContactListMember[]
+  campaignRecipients CampaignRecipient[]
 
   @@map("contacts")
 }
@@ -489,19 +506,24 @@ model Conversation {
 }
 
 model Message {
-  id             String       @id @default(uuid())
+  id             String          @id @default(uuid())
   conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderType     SenderType
-  content        String       @db.Text
-  metaMessageId  String?      @unique
+  content        String          @db.Text
+  metaMessageId  String?         @unique
   agentUserId    String?
-  agentUser      User?        @relation(fields: [agentUserId], references: [id], onDelete: SetNull)
+  agentUser      User?           @relation(fields: [agentUserId], references: [id], onDelete: SetNull)
   externalSource String?
-  isDraft        Boolean      @default(false)
+  isDraft        Boolean         @default(false)
   draftMeta      Json?
   retrieval      Json?
-  createdAt      DateTime     @default(now())
+  templateName   String?
+  deliveryStatus DeliveryStatus?
+  deliveryError  String?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  createdAt      DateTime        @default(now())
 
   @@index([conversationId])
   @@map("messages")
@@ -611,21 +633,22 @@ enum PaymentStatus {
 }
 
 model Appointment {
-  id              String            @id @default(uuid())
+  id              String                @id @default(uuid())
   contactId       String
-  contact         Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contact         Contact               @relation(fields: [contactId], references: [id], onDelete: Cascade)
   therapistId     String
-  therapist       ExpertProfile     @relation(fields: [therapistId], references: [id], onDelete: Restrict)
+  therapist       ExpertProfile         @relation(fields: [therapistId], references: [id], onDelete: Restrict)
   serviceType     ServiceType
   scheduledAt     DateTime
-  durationMinutes Int               @default(45)
-  status          AppointmentStatus @default(SCHEDULED)
-  paymentStatus   PaymentStatus     @default(PENDING)
-  roomToken       String            @unique
-  availabilityId  String?           @unique
-  availability    Availability?     @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  durationMinutes Int                   @default(45)
+  status          AppointmentStatus     @default(SCHEDULED)
+  paymentStatus   PaymentStatus         @default(PENDING)
+  roomToken       String                @unique
+  availabilityId  String?               @unique
+  availability    Availability?         @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
+  reminders       AppointmentReminder[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@index([therapistId, scheduledAt])
   @@index([contactId])
@@ -684,4 +707,176 @@ model AssistantPrompt {
   createdAt   DateTime @default(now())
 
   @@map("assistant_prompts")
+}
+
+enum TemplateCategory {
+  UTILITY
+  MARKETING
+  AUTHENTICATION
+}
+
+enum TemplateStatus {
+  APPROVED
+  PENDING
+  REJECTED
+  PAUSED
+  DISABLED
+}
+
+enum ReminderKind {
+  DAY_BEFORE
+  SHORT_BEFORE
+}
+
+enum ReminderStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum CampaignStatus {
+  DRAFT
+  READY
+  SCHEDULED
+  SENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum RecipientStatus {
+  PENDING
+  SKIPPED
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  REPLIED
+}
+
+model WhatsAppTemplate {
+  id             String           @id @default(uuid())
+  metaId         String?          @unique
+  name           String           @db.VarChar(60)
+  language       String           @default("tr") @db.VarChar(10)
+  category       TemplateCategory
+  status         TemplateStatus   @default(PENDING)
+  bodyText       String           @db.Text
+  variableCount  Int              @default(0)
+  components     Json             @default("[]")
+  rejectedReason String?          @db.Text
+  lastSyncedAt   DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  campaigns Campaign[] @relation("CampaignTemplate")
+
+  @@unique([name, language])
+  @@map("whatsapp_templates")
+}
+
+model AppointmentReminder {
+  id            String         @id @default(uuid())
+  appointmentId String
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  kind          ReminderKind
+  scheduledFor  DateTime
+  status        ReminderStatus @default(PENDING)
+  attempts      Int            @default(0)
+  messageId     String?
+  error         String?        @db.Text
+  sentAt        DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([appointmentId, kind])
+  @@index([status, scheduledFor])
+  @@map("appointment_reminders")
+}
+
+model ContactList {
+  id          String              @id @default(uuid())
+  name        String              @unique @db.VarChar(80)
+  description String?             @db.Text
+  createdById String?
+  createdBy   User?               @relation("ContactListCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  members     ContactListMember[]
+
+  @@map("contact_lists")
+}
+
+model ContactListMember {
+  listId    String
+  list      ContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  addedAt   DateTime    @default(now())
+
+  @@id([listId, contactId])
+  @@index([contactId])
+  @@map("contact_list_members")
+}
+
+model Campaign {
+  id             String              @id @default(uuid())
+  name           String              @db.VarChar(120)
+  templateId     String
+  template       WhatsAppTemplate    @relation("CampaignTemplate", fields: [templateId], references: [id], onDelete: Restrict)
+  paramMapping   Json                @default("[]")
+  listIds        String[]
+  audienceFilter Json?
+  status         CampaignStatus      @default(DRAFT)
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdById    String?
+  createdBy      User?               @relation("CampaignCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  recipientCount Int                 @default(0)
+  sentCount      Int                 @default(0)
+  deliveredCount Int                 @default(0)
+  readCount      Int                 @default(0)
+  failedCount    Int                 @default(0)
+  repliedCount   Int                 @default(0)
+  skippedCount   Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  recipients     CampaignRecipient[]
+
+  @@index([status, scheduledAt])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id         String          @id @default(uuid())
+  campaignId String
+  campaign   Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  included   Boolean         @default(true)
+  status     RecipientStatus @default(PENDING)
+  skipReason String?
+  attempts   Int             @default(0)
+  // Mesaj konuşmaya yazılmaz; kimlik yalnızca izleme için tutulur (FK yok).
+  messageId  String?
+  error      String?         @db.Text
+  sentAt     DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId, status])
+  @@index([messageId])
+  @@map("campaign_recipients")
 }

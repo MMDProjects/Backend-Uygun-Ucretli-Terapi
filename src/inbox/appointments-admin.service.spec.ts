@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { AppointmentStatus } from '@prisma/client';
+import { RemindersService } from '../messaging/reminders/reminders.service';
 
 function buildPrismaMock() {
   return {
@@ -58,6 +59,10 @@ describe('AppointmentsAdminService', () => {
     service = new AppointmentsAdminService(
       prisma as unknown as PrismaService,
       inboxEvents as unknown as InboxEventsService,
+      {
+        scheduleFor: jest.fn<any, any>().mockResolvedValue(undefined),
+        cancelFor: jest.fn<any, any>().mockResolvedValue(undefined),
+      } as unknown as RemindersService,
     );
 
     prisma.contact.findUnique.mockResolvedValue({ id: CONTACT_ID });

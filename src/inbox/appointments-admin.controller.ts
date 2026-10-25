@@ -24,6 +24,11 @@ export class AppointmentsAdminController {
     return this.appointmentsService.list(query);
   }
 
+  @Get(':id')
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.appointmentsService.findOne(id);
+  }
+
   @Post()
   create(@Body() dto: CreateAppointmentDto) {
     return this.appointmentsService.create(dto);

@@ -5,6 +5,17 @@ import { Channel } from '@prisma/client';
 const DEFAULT_TIMEOUT_MS = 10000;
 const RETRY_DELAY_MS = 1000;
 const MAX_LOGGED_BODY = 300;
+const MAX_ERROR_MESSAGE = 200;
+const NETWORK_ERROR = 'Ağ hatası veya zaman aşımı';
+
+// AbortSignal.timeout ya da iptal: istek Meta'ya ulaşmış olabilir.
+// instanceof yerine ad kontrolü: DOMException farklı bir realm'den gelebilir.
+function isTimeoutError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null || !('name' in err)) {
+    return false;
+  }
+  return err.name === 'TimeoutError' || err.name === 'AbortError';
+}
 
 export interface MetaSendOptions {
   // Yalnızca Instagram'da uygulanır; WhatsApp'ta yok sayılır.
@@ -14,11 +25,44 @@ export interface MetaSendOptions {
 export interface MetaSendResult {
   ok: boolean;
   messageId?: string;
+  error?: string;
+}
+
+export interface MetaTemplateSend {
+  name: string;
+  language: string;
+  params: string[];
 }
 
 interface MetaSendResponse {
   messages?: { id?: string }[];
   message_id?: string;
+}
+
+// Meta şablon gövdesinin alan adları tek yerde tutulur. Doğrulanırsa
+// ya da değişirse yalnızca bu fonksiyon düzeltilir.
+function buildWhatsAppTemplateBody(
+  recipientId: string,
+  template: MetaTemplateSend,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    to: recipientId,
+    type: 'template',
+    template: {
+      name: template.name,
+      language: { code: template.language },
+    },
+  };
+  if (template.params.length > 0) {
+    (body.template as Record<string, unknown>).components = [
+      {
+        type: 'body',
+        parameters: template.params.map((text) => ({ type: 'text', text })),
+      },
+    ];
+  }
+  return body;
 }
 
 @Injectable()
@@ -81,17 +125,48 @@ export class MetaSenderService {
       return { ok: false };
     }
 
-    return this.post(channel, url, token, body);
+    const result = await this.post(channel, url, token, body);
+    return result.ok
+      ? { ok: true, messageId: result.messageId }
+      : { ok: false };
   }
 
-  // Yalnızca ağ hatası, timeout ve 5xx için bir kez yeniden dener.
+  // Yalnızca WhatsApp. Pencere kapalıyken onaylı şablonla gönderim.
+  async sendTemplate(
+    recipientPhone: string,
+    template: MetaTemplateSend,
+  ): Promise<MetaSendResult> {
+    const version = this.config.get<string>('META_GRAPH_VERSION') ?? 'v21.0';
+    const phoneNumberId = this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID');
+    const token = this.config.get<string>('WHATSAPP_ACCESS_TOKEN');
+    if (!phoneNumberId || !token) {
+      this.logger.warn(
+        'WhatsApp şablon gönderimi atlandı: PHONE_NUMBER_ID veya ACCESS_TOKEN eksik',
+      );
+      return { ok: false, error: 'WhatsApp yapılandırması eksik' };
+    }
+
+    const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
+    const body = buildWhatsAppTemplateBody(recipientPhone, template);
+    // Şablonda zaman aşımı sonrası yeniden deneme yok: Meta isteği kabul
+    // etmiş olabilir ve aynı şablon iki kez gitmesin.
+    return this.post(Channel.WHATSAPP, url, token, body, {
+      retryOnTimeout: false,
+    });
+  }
+
+  // Yalnızca ağ hatası, timeout ve 5xx için bir kez yeniden dener
+  // (şablonda timeout hariç).
   private async post(
     channel: Channel,
     url: string,
     token: string,
     body: Record<string, unknown>,
+    options: { retryOnTimeout?: boolean } = {},
   ): Promise<MetaSendResult> {
+    const retryOnTimeout = options.retryOnTimeout ?? true;
     const timeoutMs = this.timeoutMs();
+    let lastError = NETWORK_ERROR;
 
     for (let attempt = 1; attempt <= 2; attempt++) {
       const canRetry = attempt === 1;
@@ -119,22 +194,40 @@ export class MetaSenderService {
         this.logger.error(
           `Meta gönderimi başarısız (${channel}): HTTP ${res.status} ${detail}`,
         );
+        lastError = this.describeHttpError(res.status, detail);
         if (res.status < 500 || !canRetry) {
-          return { ok: false };
+          return { ok: false, error: lastError };
         }
       } catch (err) {
         this.logger.error(
           `Meta gönderimi hata verdi (${channel})`,
           err as Error,
         );
-        if (!canRetry) {
-          return { ok: false };
+        lastError = NETWORK_ERROR;
+        if (!canRetry || (!retryOnTimeout && isTimeoutError(err))) {
+          return { ok: false, error: lastError };
         }
       }
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
     }
 
-    return { ok: false };
+    return { ok: false, error: lastError };
+  }
+
+  // Meta'nın hata mesajını (varsa) kısaltarak kullanıcıya gösterilecek metin.
+  private describeHttpError(status: number, detail: string): string {
+    try {
+      const parsed = JSON.parse(detail) as {
+        error?: { message?: unknown };
+      };
+      const message = parsed.error?.message;
+      if (typeof message === 'string' && message.length > 0) {
+        return `HTTP ${status}: ${message.slice(0, MAX_ERROR_MESSAGE)}`;
+      }
+    } catch {
+      // JSON değilse yalnızca durum kodu yazılır.
+    }
+    return `HTTP ${status}`;
   }
 
   private readMessageId(

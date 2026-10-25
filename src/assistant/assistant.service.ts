@@ -6,6 +6,7 @@ import {
   Contact,
   ContactType,
   Conversation,
+  DeliveryStatus,
   Prisma,
   SenderType,
 } from '@prisma/client';
@@ -878,6 +879,7 @@ export class AssistantService {
         senderType: SenderType.BOT,
         content,
         metaMessageId: metaMessageId ?? null,
+        deliveryStatus: metaMessageId ? DeliveryStatus.SENT : undefined,
         retrieval: retrieval ?? undefined,
       },
     });

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
@@ -16,6 +17,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { parsePagination } from '../common/pagination';
+import { RemindersService } from '../messaging/reminders/reminders.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { ListAppointmentsQueryDto } from './dto/list-appointments.query.dto';
 
@@ -36,6 +38,16 @@ const APPOINTMENT_INCLUDE = {
   },
   contact: {
     select: { id: true, fullName: true, phone: true, lifecycleStatus: true },
+  },
+  reminders: {
+    select: {
+      kind: true,
+      status: true,
+      scheduledFor: true,
+      sentAt: true,
+      error: true,
+    },
+    orderBy: { scheduledFor: 'asc' },
   },
 } as const;
 
@@ -76,9 +88,12 @@ export function slotStart(date: Date, startTime: string): Date {
 
 @Injectable()
 export class AppointmentsAdminService {
+  private readonly logger = new Logger(AppointmentsAdminService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly inboxEvents: InboxEventsService,
+    private readonly reminders: RemindersService,
   ) {}
 
   async list(filters: ListAppointmentsQueryDto) {
@@ -190,6 +205,13 @@ export class AppointmentsAdminService {
       throw err;
     }
 
+    // Hatırlatma planlanamazsa randevu yine de oluşturulmuş kalır
+    try {
+      await this.reminders.scheduleFor(appointment.id);
+    } catch (err) {
+      this.logger.warn(`Hatırlatma planlanamadı: ${String(err)}`);
+    }
+
     const openConversations = await this.prisma.conversation.findMany({
       where: {
         contactId: dto.contactId,
@@ -206,6 +228,16 @@ export class AppointmentsAdminService {
     }
     this.inboxEvents.emit('counts.changed', {});
 
+    return appointment;
+  }
+
+  // Detay: hatırlatma kayıtlarıyla birlikte.
+  async findOne(id: string) {
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id },
+      include: APPOINTMENT_INCLUDE,
+    });
+    if (!appointment) throw new NotFoundException('Randevu bulunamadı');
     return appointment;
   }
 
@@ -233,7 +265,7 @@ export class AppointmentsAdminService {
       );
     }
 
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id },
       data: {
         status,
@@ -244,6 +276,14 @@ export class AppointmentsAdminService {
       },
       include: APPOINTMENT_INCLUDE,
     });
+
+    // Randevu artık planlı değilse bekleyen hatırlatmalar iptal edilir
+    try {
+      await this.reminders.cancelFor(id);
+    } catch (err) {
+      this.logger.warn(`Hatırlatma iptal edilemedi: ${String(err)}`);
+    }
+    return updated;
   }
 
   // Slot uzmana ait, engelsiz ve boş olmalı; randevu başlangıcını döner

@@ -10,6 +10,8 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  Inject,
+  Optional,
   RawBodyRequest,
 } from '@nestjs/common';
 import { ApiTags, ApiExcludeEndpoint } from '@nestjs/swagger';
@@ -21,6 +23,11 @@ import { verifyHmacSha256Signature, parseAppSecrets } from './crypto';
 import { MessageKind, WebhooksService } from './webhooks.service';
 import { AssistantService } from '../assistant/assistant.service';
 import { MetaWebhookBody } from './dto/meta-webhook-payload.dto';
+import { WebhookFollowupService } from './webhook-followup.service';
+import {
+  TEMPLATE_STATUS_PORT,
+  TemplateStatusPort,
+} from './template-status.port';
 
 interface PendingAssistantTask {
   conversationId: string;
@@ -43,6 +50,12 @@ export class WebhooksController {
     private readonly webhooksService: WebhooksService,
     private readonly config: ConfigService,
     private readonly assistant: AssistantService,
+    // Opsiyonel: teslim durumu ve DUR takibi, şablon modülü ise şablon
+    // durum olayı için. Testlerde ve modül dışında atlanabilir.
+    @Optional() private readonly followup?: WebhookFollowupService,
+    @Optional()
+    @Inject(TEMPLATE_STATUS_PORT)
+    private readonly templateStatus?: TemplateStatusPort,
   ) {}
 
   @Get()
@@ -80,12 +93,23 @@ export class WebhooksController {
     }
 
     const body = req.body as MetaWebhookBody;
+    await this.processDeliveryEvents(body);
     const messages = this.webhooksService.extractMessages(body);
 
     const pending: PendingAssistantTask[] = [];
     for (const msg of messages) {
       const outcome = await this.webhooksService.processIncomingMessage(msg);
       if (outcome?.isNew) {
+        const optedOut =
+          (await this.followup?.handleInboundMessage({
+            conversationId: outcome.conversationId,
+            text: msg.content,
+            kind: outcome.kind,
+            senderId: msg.externalContactId,
+            standby: outcome.standby,
+          })) ?? false;
+        // DUR mesajına asistan cevap vermez; kriz ise yine de işlenir.
+        if (optedOut && !outcome.crisis) continue;
         pending.push({
           conversationId: outcome.conversationId,
           content: msg.content,
@@ -119,6 +143,42 @@ export class WebhooksController {
     }
 
     return { received: true };
+  }
+
+  // Şablon durumu, mesaj iletim durumu ve Instagram okuma olayları. Bir
+  // olayın hatası diğerlerini ve yanıtı engellemez.
+  private async processDeliveryEvents(body: MetaWebhookBody): Promise<void> {
+    for (const entry of body.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        if (change.field === 'message_template_status_update') {
+          await this.safely('Şablon durumu', () =>
+            this.templateStatus?.handle(change.value),
+          );
+        } else if (change.value?.statuses?.length) {
+          const statuses = change.value.statuses;
+          await this.safely('Mesaj durumu', () =>
+            this.followup?.applyWhatsAppStatuses(statuses),
+          );
+        }
+      }
+      for (const event of entry.messaging ?? []) {
+        if (!event.read) continue;
+        await this.safely('Instagram okuma', () =>
+          this.followup?.applyInstagramRead(event),
+        );
+      }
+    }
+  }
+
+  private async safely(
+    label: string,
+    task: () => Promise<void> | undefined,
+  ): Promise<void> {
+    try {
+      await task();
+    } catch (err) {
+      this.logger.error(`${label} işlenemedi`, err as Error);
+    }
   }
 
   private dispatchAssistant(item: PendingAssistantTask): Promise<void> {

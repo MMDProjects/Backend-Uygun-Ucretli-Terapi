@@ -171,4 +171,164 @@ describe('MetaSenderService', () => {
       text: { body: 'Merhaba' },
     });
   });
+
+  describe('sendTemplate', () => {
+    it('şablon gövdesini doğru alanlarla gönderir ve kimliği döndürür', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response('{"messages":[{"id":"wamid.t1"}]}', { status: 200 }),
+      );
+
+      const result = await buildService().sendTemplate('905550001122', {
+        name: 'hatirlatma_gun',
+        language: 'tr',
+        params: ['Ayşe', '27 Ekim Pazartesi', '14:00'],
+      });
+
+      expect(result).toEqual({ ok: true, messageId: 'wamid.t1' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://graph.facebook.com/v21.0/111/messages');
+      expect(JSON.parse(init.body)).toEqual({
+        messaging_product: 'whatsapp',
+        to: '905550001122',
+        type: 'template',
+        template: {
+          name: 'hatirlatma_gun',
+          language: { code: 'tr' },
+          components: [
+            {
+              type: 'body',
+              parameters: [
+                { type: 'text', text: 'Ayşe' },
+                { type: 'text', text: '27 Ekim Pazartesi' },
+                { type: 'text', text: '14:00' },
+              ],
+            },
+          ],
+        },
+      });
+    });
+
+    it('değişken yoksa components alanını eklemez', async () => {
+      await buildService().sendTemplate('905550001122', {
+        name: 'duz_sablon',
+        language: 'tr',
+        params: [],
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init.body).template).toEqual({
+        name: 'duz_sablon',
+        language: { code: 'tr' },
+      });
+    });
+
+    it('WhatsApp yapılandırması eksikse fetch çağırmadan hata döner', async () => {
+      const service = buildService({ ...fullEnv, WHATSAPP_ACCESS_TOKEN: '' });
+
+      const result = await service.sendTemplate('905550001122', {
+        name: 'duz_sablon',
+        language: 'tr',
+        params: [],
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('Meta 4xx hatasında hata mesajını kısaltarak döndürür ve yeniden denemez', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: { message: 'Template name does not exist' },
+          }),
+          { status: 400 },
+        ),
+      );
+
+      const result = await buildService().sendTemplate('905550001122', {
+        name: 'yok',
+        language: 'tr',
+        params: [],
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'HTTP 400: Template name does not exist',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('ağ hatasında bir kez yeniden dener ve hata metni döndürür', async () => {
+      jest.useFakeTimers();
+      fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+      const pending = buildService().sendTemplate('905550001122', {
+        name: 'duz_sablon',
+        language: 'tr',
+        params: [],
+      });
+      await jest.runAllTimersAsync();
+
+      await expect(pending).resolves.toEqual({
+        ok: false,
+        error: 'Ağ hatası veya zaman aşımı',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('zaman aşımında yeniden denemez (Meta isteği kabul etmiş olabilir)', async () => {
+      fetchMock.mockRejectedValue(
+        new DOMException('signal timed out', 'TimeoutError'),
+      );
+
+      const result = await buildService().sendTemplate('905550001122', {
+        name: 'duz_sablon',
+        language: 'tr',
+        params: [],
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'Ağ hatası veya zaman aşımı',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('5xx hatasında şablon gönderimi yine bir kez yeniden dener', async () => {
+      jest.useFakeTimers();
+      fetchMock
+        .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+        .mockResolvedValueOnce(
+          new Response('{"messages":[{"id":"wamid.9"}]}', { status: 200 }),
+        );
+
+      const pending = buildService().sendTemplate('905550001122', {
+        name: 'duz_sablon',
+        language: 'tr',
+        params: [],
+      });
+      await jest.runAllTimersAsync();
+
+      await expect(pending).resolves.toEqual({
+        ok: true,
+        messageId: 'wamid.9',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('sendText başarısızlığında hata metni eklemez (geriye uyumlu)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('{"error":{"message":"bad"}}', { status: 400 }),
+    );
+
+    const result = await buildService().sendText(
+      'WHATSAPP',
+      '905550001122',
+      'Merhaba',
+    );
+
+    expect(result).toStrictEqual({ ok: false });
+  });
 });

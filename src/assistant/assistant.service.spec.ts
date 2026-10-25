@@ -431,6 +431,7 @@ describe('AssistantService', () => {
           senderType: 'BOT',
           content: CRISIS_MESSAGE,
           metaMessageId: 'wamid-c1',
+          deliveryStatus: 'SENT',
         },
       });
       expect(deps.notifications.notifyAdmins).toHaveBeenCalledWith(
@@ -549,6 +550,7 @@ describe('desteklenmeyen mesajlar (medya)', () => {
         senderType: 'BOT',
         content: MEDIA_REPLY,
         metaMessageId: 'wamid-m1',
+        deliveryStatus: 'SENT',
       },
     });
     expect(deps.openai.chat).not.toHaveBeenCalled();
@@ -647,6 +649,7 @@ describe('Instagram mesaj bölme', () => {
         senderType: 'BOT',
         content: 'A'.repeat(600),
         metaMessageId: 'ig-1',
+        deliveryStatus: 'SENT',
         retrieval: expect.objectContaining({ topScore: 0.9 }),
       },
     });
@@ -656,6 +659,7 @@ describe('Instagram mesaj bölme', () => {
         senderType: 'BOT',
         content: 'B'.repeat(600),
         metaMessageId: 'ig-2',
+        deliveryStatus: 'SENT',
       },
     });
   });

@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   Channel,
   ConversationStatus,
+  DeliveryStatus,
   LeadStatus,
   Prisma,
   Role,
@@ -315,6 +316,8 @@ export class InboxService {
         content: dto.content,
         agentUserId,
         metaMessageId: res.messageId ?? null,
+        // Gönderildi; iletildi/okundu durumu WhatsApp durum olaylarıyla gelir.
+        deliveryStatus: res.messageId ? DeliveryStatus.SENT : null,
       },
       include: { agentUser: AGENT_SELECT },
     });
