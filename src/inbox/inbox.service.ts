@@ -163,7 +163,8 @@ export class InboxService {
   async getConversation(id: string) {
     const conversation = await this.findConversationOrFail(id);
     const contactId = conversation.contactId;
-    const now = new Date();
+    // Saati geçmiş ama Geldi/Gelmedi işaretlenmemiş randevular da panelde kalsın (son 30 gün)
+    const pastDueFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const [leads, appointments, lastClient] = await Promise.all([
       this.prisma.lead.findMany({
@@ -172,8 +173,13 @@ export class InboxService {
         take: 5,
       }),
       this.prisma.appointment.findMany({
-        where: { contactId, status: 'SCHEDULED', scheduledAt: { gte: now } },
+        where: {
+          contactId,
+          status: 'SCHEDULED',
+          scheduledAt: { gte: pastDueFrom },
+        },
         orderBy: { scheduledAt: 'asc' },
+        take: 10,
         include: {
           therapist: {
             select: {

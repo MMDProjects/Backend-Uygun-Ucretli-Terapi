@@ -537,6 +537,20 @@ describe('InboxService', () => {
       );
     });
 
+    it('saati geçmiş ama işaretlenmemiş randevuları da (son 30 gün) getirir', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(conversation());
+      prisma.message.findFirst.mockResolvedValue(null);
+
+      await service.getConversation('conv-1');
+
+      const args = prisma.appointment.findMany.mock.calls[0][0];
+      expect(args.where.status).toBe('SCHEDULED');
+      const from = (args.where.scheduledAt.gte as Date).getTime();
+      expect(Date.now() - from).toBeGreaterThan(29 * 24 * HOUR);
+      expect(Date.now() - from).toBeLessThan(31 * 24 * HOUR);
+      expect(args.take).toBe(10);
+    });
+
     it('danışan hiç yazmamışsa windowExpiresAt null döner', async () => {
       prisma.conversation.findUnique.mockResolvedValue(conversation());
       prisma.message.findFirst.mockResolvedValue(null);
