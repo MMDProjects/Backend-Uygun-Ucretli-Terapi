@@ -71,21 +71,32 @@ export class OpenAiClient {
   async chat(input: {
     messages: OpenAiMessage[];
     tools?: OpenAiToolSchema[];
+    model?: string;
+    maxTokens?: number;
+    temperature?: number;
+    timeoutMs?: number;
   }): Promise<ChatResult> {
     const apiKey = this.requireApiKey();
     const body: Record<string, unknown> = {
-      model: this.config.get<string>('OPENAI_MODEL', 'gpt-4o-mini'),
+      model:
+        input.model ?? this.config.get<string>('OPENAI_MODEL', 'gpt-4o-mini'),
       messages: input.messages,
     };
     if (input.tools && input.tools.length > 0) {
       body.tools = input.tools;
+    }
+    if (input.maxTokens !== undefined) {
+      body.max_tokens = input.maxTokens;
+    }
+    if (input.temperature !== undefined) {
+      body.temperature = input.temperature;
     }
 
     const res = await this.post(
       CHAT_URL,
       apiKey,
       body,
-      this.chatTimeoutMs(),
+      input.timeoutMs ?? this.chatTimeoutMs(),
       'OpenAI chat',
     );
     if (!res.ok) {

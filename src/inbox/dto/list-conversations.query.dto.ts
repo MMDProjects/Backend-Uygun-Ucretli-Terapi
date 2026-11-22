@@ -6,11 +6,12 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
-import { Channel, ContactType } from '@prisma/client';
+import { Channel, ContactLifecycle, ContactType } from '@prisma/client';
 
 export class ListConversationsQueryDto {
   @IsOptional()
@@ -24,6 +25,23 @@ export class ListConversationsQueryDto {
   @IsOptional()
   @IsEnum(ContactType)
   contactType?: ContactType;
+
+  @IsOptional()
+  @IsEnum(ContactLifecycle)
+  lifecycleStatus?: ContactLifecycle;
+
+  @IsOptional()
+  @IsUUID('4')
+  tagId?: string;
+
+  @IsOptional()
+  @IsIn(['me', 'unassigned', 'any'])
+  assigned?: 'me' | 'unassigned' | 'any';
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  needsReply?: boolean;
 
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')

@@ -194,6 +194,9 @@ describe('Inbox (e2e)', () => {
         attention: 4,
         newLeads: 4,
         openUnanswered: 5,
+        // Ham SQL sayaçları ($queryRaw) bu testte 0 döner.
+        needsReply: 0,
+        unreadForMe: 0,
       });
     });
   });

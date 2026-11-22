@@ -9,6 +9,10 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { FilterExpertsDto } from './dto/filter-experts.dto';
 import { User } from '@prisma/client';
+import {
+  SLOT_APPOINTMENT_SELECT,
+  withBookingState,
+} from '../common/availability-booking';
 
 @Injectable()
 export class ExpertsService {
@@ -185,9 +189,11 @@ export class ExpertsService {
     });
     if (!profile) throw new NotFoundException('Profil bulunamadı');
 
-    return this.prisma.availability.findMany({
+    const slots = await this.prisma.availability.findMany({
       where: { expertProfileId: profile.id },
+      include: { appointment: SLOT_APPOINTMENT_SELECT },
     });
+    return slots.map((slot) => withBookingState(slot));
   }
 
   async addAvailability(userId: string, dto: CreateAvailabilityDto) {
@@ -231,7 +237,8 @@ export class ExpertsService {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
-    return this.prisma.availability.findMany({
+    // Herkese açık uçta booked alanı döner; randevu kimliği dışarı verilmez
+    const slots = await this.prisma.availability.findMany({
       where: {
         expertProfileId: expertId,
         isBlockedByAdmin: false,
@@ -239,7 +246,9 @@ export class ExpertsService {
       },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
       take: 42,
+      include: { appointment: SLOT_APPOINTMENT_SELECT },
     });
+    return slots.map((slot) => withBookingState(slot));
   }
 
   async addFavorite(userId: string, expertProfileId: string) {

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -11,7 +12,10 @@ import {
 } from '@prisma/client';
 import { KnowledgeAdminService } from './knowledge-admin.service';
 import { KnowledgeService } from '../assistant/knowledge.service';
-import { OpenAiClient } from '../assistant/openai.client';
+import {
+  OpenAiClient,
+  OpenAiUnavailableError,
+} from '../assistant/openai.client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 
@@ -166,14 +170,104 @@ describe('KnowledgeAdminService', () => {
   });
 
   describe('POST unanswered/:id/dismiss', () => {
-    it('sadece RESOLVED yapar, bilgi bankasına yazmaz', async () => {
+    it('durumu DISMISSED yapar, bilgi bankasına yazmaz', async () => {
       await service.dismissUnanswered('q-1');
 
       expect(prisma.knowledgeBase.create).not.toHaveBeenCalled();
       expect(prisma.unansweredQuestion.update).toHaveBeenCalledWith({
         where: { id: 'q-1' },
-        data: { status: UnansweredStatus.RESOLVED },
+        data: { status: UnansweredStatus.DISMISSED },
       });
+    });
+  });
+
+  describe('GET unanswered (listUnanswered)', () => {
+    it('varsayılanda son sorulma tarihine göre sıralar, embedding dönmez', async () => {
+      await service.listUnanswered({ page: 1, limit: 20 });
+
+      const args = prisma.unansweredQuestion.findMany.mock.calls[0][0];
+      expect(args.orderBy).toEqual([{ lastAskedAt: 'desc' }]);
+      expect(args.select).not.toHaveProperty('embedding');
+      expect(args.select).toEqual(
+        expect.objectContaining({ askCount: true, lastAskedAt: true }),
+      );
+    });
+
+    it('sort=count ile sorulma sayısına göre sıralar', async () => {
+      await service.listUnanswered({ page: 1, limit: 20, sort: 'count' });
+
+      const args = prisma.unansweredQuestion.findMany.mock.calls[0][0];
+      expect(args.orderBy).toEqual([
+        { askCount: 'desc' },
+        { lastAskedAt: 'desc' },
+      ]);
+    });
+
+    it('DISMISSED durum filtresini kabul eder', async () => {
+      await service.listUnanswered({
+        page: 1,
+        limit: 20,
+        status: UnansweredStatus.DISMISSED,
+      });
+
+      const args = prisma.unansweredQuestion.findMany.mock.calls[0][0];
+      expect(args.where).toEqual({ status: UnansweredStatus.DISMISSED });
+    });
+
+    it('geçersiz durum veya sıralamada 400 döner', async () => {
+      await expect(
+        service.listUnanswered({ page: 1, limit: 20, status: 'BILINMEYEN' }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.listUnanswered({ page: 1, limit: 20, sort: 'rastgele' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.unansweredQuestion.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('knowledge stats, reindex ve arama', () => {
+    it('stats toplam ve embedding’i eksik kayıt sayısını döner', async () => {
+      prisma.knowledgeBase.count
+        .mockResolvedValueOnce(12)
+        .mockResolvedValueOnce(3);
+
+      await expect(service.knowledgeStats()).resolves.toEqual({
+        total: 12,
+        missingEmbedding: 3,
+      });
+    });
+
+    it('OpenAI yoksa reindex-missing 503 döner', async () => {
+      prisma.knowledgeBase.findMany.mockResolvedValueOnce([
+        { id: 'kb-9', title: 'Başlık', content: 'İçerik', source: 'MANUAL' },
+      ]);
+      openai.embed.mockRejectedValue(new OpenAiUnavailableError());
+
+      await expect(service.reindexMissing()).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('arama sonucunda excerpt en fazla 300 karakter olur', async () => {
+      openai.embed.mockResolvedValue([[1, 0]]);
+      prisma.knowledgeBase.findMany.mockResolvedValueOnce([
+        {
+          id: 'kb-1',
+          title: 'Fiyat',
+          content: 'a'.repeat(500),
+          source: 'MANUAL',
+          embedding: [1, 0],
+        },
+      ]);
+
+      const result = await service.searchKnowledge('fiyat');
+
+      expect(result.query).toBe('fiyat');
+      expect(result.threshold).toBe(0.4);
+      expect(result.items[0].excerpt).toHaveLength(300);
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({ id: 'kb-1', source: 'MANUAL', score: 1 }),
+      );
     });
   });
 

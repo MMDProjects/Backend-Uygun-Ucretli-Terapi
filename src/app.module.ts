@@ -22,6 +22,7 @@ import { PackagesModule } from './packages/packages.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { AssistantModule } from './assistant/assistant.module';
 import { InboxModule } from './inbox/inbox.module';
+import { MessagingModule } from './messaging/messaging.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -52,6 +53,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     WebhooksModule,
     AssistantModule,
     InboxModule,
+    MessagingModule,
   ],
   providers: [
     AppService,

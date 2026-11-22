@@ -553,6 +553,7 @@ describe('Admin (e2e)', () => {
           startTime: '10:00',
           endTime: '11:00',
           isBlockedByAdmin: false,
+          appointment: null,
         },
       ]);
 
@@ -594,6 +595,82 @@ describe('Admin (e2e)', () => {
         .get('/admin/availabilities')
         .set('Authorization', bearerHeader(uzmanToken()))
         .expect(403);
+    });
+  });
+
+  // D8: müsaitlik slotlarında booked ve appointmentId alanları.
+  describe('müsaitlik booked alanı (D8)', () => {
+    const slot = (id: string, appointment: object | null) => ({
+      id,
+      expertProfileId: MOCK_EXPERT_PROFILE_ID,
+      date: new Date('2026-10-06'),
+      startTime: '10:00',
+      endTime: '11:00',
+      isBlockedByAdmin: false,
+      appointment,
+    });
+
+    const slots = () => [
+      slot('slot-dolu', { id: 'apt-1', status: 'SCHEDULED' }),
+      slot('slot-iptal', { id: 'apt-2', status: 'CANCELLED' }),
+      slot('slot-tamamlandi', { id: 'apt-3', status: 'COMPLETED' }),
+      slot('slot-bos', null),
+    ];
+
+    it('GET /admin/availabilities dolu slotu booked ve appointmentId ile doner', async () => {
+      prismaMock.availability.findMany.mockResolvedValue(slots());
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/availabilities?weekStart=2026-10-06')
+        .set('Authorization', bearerHeader(adminToken()))
+        .expect(200);
+
+      expect(res.body).toEqual([
+        expect.objectContaining({
+          id: 'slot-dolu',
+          booked: true,
+          appointmentId: 'apt-1',
+        }),
+        expect.objectContaining({
+          id: 'slot-iptal',
+          booked: false,
+          appointmentId: null,
+        }),
+        expect.objectContaining({
+          id: 'slot-tamamlandi',
+          booked: true,
+          appointmentId: 'apt-3',
+        }),
+        expect.objectContaining({
+          id: 'slot-bos',
+          booked: false,
+          appointmentId: null,
+        }),
+      ]);
+      // Ham randevu nesnesi yanıta sızmaz.
+      expect(res.body[0]).not.toHaveProperty('appointment');
+    });
+
+    it('GET /admin/experts/:id/availabilities booked ve appointmentId doner', async () => {
+      prismaMock.availability.findMany.mockResolvedValue(slots());
+
+      const res = await request(app.getHttpServer())
+        .get(
+          `/admin/experts/${MOCK_EXPERT_PROFILE_ID}/availabilities?weekStart=2026-10-06`,
+        )
+        .set('Authorization', bearerHeader(adminToken()))
+        .expect(200);
+
+      expect(res.body[0]).toEqual(
+        expect.objectContaining({
+          id: 'slot-dolu',
+          booked: true,
+          appointmentId: 'apt-1',
+        }),
+      );
+      expect(res.body[1]).toEqual(
+        expect.objectContaining({ booked: false, appointmentId: null }),
+      );
     });
   });
 });

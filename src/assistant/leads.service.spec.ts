@@ -114,7 +114,7 @@ describe('LeadsService', () => {
     });
     expect(prisma.contact.update).toHaveBeenCalledWith({
       where: { id: 'contact-1' },
-      data: { phone: '05551112233' },
+      data: { phone: '05551112233', fullName: 'Ayşe Yılmaz', age: 31 },
     });
   });
 
@@ -134,10 +134,43 @@ describe('LeadsService', () => {
     expect(message).not.toContain('GİZLİ ÖZET METNİ');
   });
 
-  it("WhatsApp'ta contact.phone varken Contact güncellenmez, admin e-postası gönderilir", async () => {
+  it('kişi kartında ad ve yaş doluyken üzerine yazmaz', async () => {
+    await service.createFromTool(
+      { id: 'conv-1', channel: 'WHATSAPP' },
+      {
+        id: 'contact-1',
+        phone: '905551112233',
+        fullName: 'Mevcut Ad',
+        age: 40,
+      },
+      baseArgs,
+    );
+
+    expect(prisma.contact.update).not.toHaveBeenCalled();
+  });
+
+  it('kişi kartında yalnızca boş olan ad alanını doldurur', async () => {
+    await service.createFromTool(
+      { id: 'conv-1', channel: 'WHATSAPP' },
+      { id: 'contact-1', phone: '905551112233', fullName: null, age: 40 },
+      baseArgs,
+    );
+
+    expect(prisma.contact.update).toHaveBeenCalledWith({
+      where: { id: 'contact-1' },
+      data: { fullName: 'Ayşe Yılmaz' },
+    });
+  });
+
+  it("WhatsApp'ta contact.phone varken telefon yazılmaz, admin e-postası gönderilir", async () => {
     const result = await service.createFromTool(
       { id: 'conv-1', channel: 'WHATSAPP' },
-      { id: 'contact-1', phone: '905551112233' },
+      {
+        id: 'contact-1',
+        phone: '905551112233',
+        fullName: 'Ayşe Yılmaz',
+        age: 31,
+      },
       baseArgs,
     );
 

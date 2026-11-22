@@ -19,11 +19,13 @@ export class UnansweredAdminController {
   @Get()
   list(
     @Query('status') status?: string,
+    @Query('sort') sort?: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
     return this.knowledge.listUnanswered({
       status,
+      sort,
       page: Number(page),
       limit: Number(limit),
     });

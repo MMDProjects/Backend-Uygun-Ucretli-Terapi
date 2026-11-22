@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
@@ -9,16 +10,24 @@ import {
   ApprovalStatus,
   AppointmentStatus,
   ConversationStatus,
+  ContactLifecycle,
   LeadStatus,
   PaymentStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
+import { parsePagination } from '../common/pagination';
+import { RemindersService } from '../messaging/reminders/reminders.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { ListAppointmentsQueryDto } from './dto/list-appointments.query.dto';
 
 const DEFAULT_DURATION_MINUTES = 45;
 const MAX_DURATION_MINUTES = 240;
 const MS_PER_MINUTE = 60 * 1000;
+const ISTANBUL_TZ = 'Europe/Istanbul';
+// Türkiye 2016'dan beri sabit UTC+3 kullanır
+const ISTANBUL_OFFSET = '+03:00';
+const SLOT_CONFLICT_MESSAGE = 'Bu müsaitlik zaten bir randevuya bağlı.';
 
 const APPOINTMENT_INCLUDE = {
   therapist: {
@@ -27,33 +36,87 @@ const APPOINTMENT_INCLUDE = {
       user: { select: { firstName: true, lastName: true } },
     },
   },
+  contact: {
+    select: { id: true, fullName: true, phone: true, lifecycleStatus: true },
+  },
+  reminders: {
+    select: {
+      kind: true,
+      status: true,
+      scheduledFor: true,
+      sentAt: true,
+      error: true,
+    },
+    orderBy: { scheduledFor: 'asc' },
+  },
 } as const;
+
+// Yalnızca planlanmış randevu bu durumlara geçebilir
+const ALLOWED_NEXT_STATUSES: AppointmentStatus[] = [
+  AppointmentStatus.COMPLETED,
+  AppointmentStatus.NO_SHOW,
+  AppointmentStatus.CANCELLED,
+];
+// Geldi / Gelmedi yalnızca randevu saati geçtikten sonra işaretlenebilir
+const PAST_ONLY_STATUSES: AppointmentStatus[] = [
+  AppointmentStatus.COMPLETED,
+  AppointmentStatus.NO_SHOW,
+];
+
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
+}
+
+// Slot tarihinin İstanbul günü ile HH:MM saatini +03:00 ofsetiyle birleştirir
+export function slotStart(date: Date, startTime: string): Date {
+  const ymd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ISTANBUL_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+  const start = new Date(`${ymd}T${startTime}:00${ISTANBUL_OFFSET}`);
+  if (Number.isNaN(start.getTime())) {
+    throw new BadRequestException('Müsaitlik saati geçersiz');
+  }
+  return start;
+}
 
 @Injectable()
 export class AppointmentsAdminService {
+  private readonly logger = new Logger(AppointmentsAdminService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly inboxEvents: InboxEventsService,
+    private readonly reminders: RemindersService,
   ) {}
 
-  async list(filters: {
-    contactId?: string;
-    therapistId?: string;
-    from?: string;
-    to?: string;
-  }) {
+  async list(filters: ListAppointmentsQueryDto) {
     const scheduledAt: { gte?: Date; lte?: Date } = {};
     if (filters.from) scheduledAt.gte = this.parseDate(filters.from, 'from');
     if (filters.to) scheduledAt.lte = this.parseDate(filters.to, 'to');
+
+    const pg = parsePagination(filters.page, filters.limit, {
+      defaultLimit: 100,
+      maxLimit: 100,
+    });
 
     return this.prisma.appointment.findMany({
       where: {
         ...(filters.contactId && { contactId: filters.contactId }),
         ...(filters.therapistId && { therapistId: filters.therapistId }),
+        ...(filters.status && { status: filters.status }),
         ...(Object.keys(scheduledAt).length > 0 && { scheduledAt }),
       },
       orderBy: { scheduledAt: 'asc' },
       include: APPOINTMENT_INCLUDE,
+      skip: pg.skip,
+      take: pg.limit,
     });
   }
 
@@ -89,24 +152,37 @@ export class AppointmentsAdminService {
       );
     }
 
-    const scheduledAt = this.parseDate(dto.scheduledAt, 'scheduledAt');
+    const scheduledAt = dto.availabilityId
+      ? await this.resolveSlotStart(dto.availabilityId, dto.therapistId)
+      : this.requireScheduledAt(dto.scheduledAt);
     const durationMinutes = dto.durationMinutes ?? DEFAULT_DURATION_MINUTES;
     await this.assertNoConflict(dto.therapistId, scheduledAt, durationMinutes);
 
     const roomToken = crypto.randomBytes(24).toString('hex');
+    const appointmentOp = this.prisma.appointment.create({
+      data: {
+        contactId: dto.contactId,
+        therapistId: dto.therapistId,
+        serviceType: dto.serviceType,
+        scheduledAt,
+        durationMinutes,
+        paymentStatus: dto.paymentStatus ?? PaymentStatus.PENDING,
+        roomToken,
+        availabilityId: dto.availabilityId ?? null,
+      },
+      include: APPOINTMENT_INCLUDE,
+    });
+    // Randevusu oluşan potansiyel danışan, danışana dönüşür
+    const lifecycleOp = this.prisma.contact.updateMany({
+      where: {
+        id: dto.contactId,
+        lifecycleStatus: ContactLifecycle.POTANSIYEL,
+      },
+      data: { lifecycleStatus: ContactLifecycle.DANISAN },
+    });
     const operations = [
-      this.prisma.appointment.create({
-        data: {
-          contactId: dto.contactId,
-          therapistId: dto.therapistId,
-          serviceType: dto.serviceType,
-          scheduledAt,
-          durationMinutes,
-          paymentStatus: dto.paymentStatus ?? PaymentStatus.PENDING,
-          roomToken,
-        },
-        include: APPOINTMENT_INCLUDE,
-      }),
+      appointmentOp,
+      lifecycleOp,
       ...(dto.leadId
         ? [
             this.prisma.lead.update({
@@ -116,7 +192,25 @@ export class AppointmentsAdminService {
           ]
         : []),
     ];
-    const [appointment] = await this.prisma.$transaction(operations);
+
+    let appointment: Awaited<typeof appointmentOp>;
+    try {
+      const results = await this.prisma.$transaction(operations);
+      appointment = results[0] as Awaited<typeof appointmentOp>;
+    } catch (err) {
+      // Aynı slota eşzamanlı istekler gelirse availabilityId unique ihlali olur
+      if (dto.availabilityId && isUniqueViolation(err)) {
+        throw new ConflictException(SLOT_CONFLICT_MESSAGE);
+      }
+      throw err;
+    }
+
+    // Hatırlatma planlanamazsa randevu yine de oluşturulmuş kalır
+    try {
+      await this.reminders.scheduleFor(appointment.id);
+    } catch (err) {
+      this.logger.warn(`Hatırlatma planlanamadı: ${String(err)}`);
+    }
 
     const openConversations = await this.prisma.conversation.findMany({
       where: {
@@ -137,18 +231,96 @@ export class AppointmentsAdminService {
     return appointment;
   }
 
+  // Detay: hatırlatma kayıtlarıyla birlikte.
+  async findOne(id: string) {
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id },
+      include: APPOINTMENT_INCLUDE,
+    });
+    if (!appointment) throw new NotFoundException('Randevu bulunamadı');
+    return appointment;
+  }
+
   async updateStatus(id: string, status: AppointmentStatus) {
     const existing = await this.prisma.appointment.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, status: true, scheduledAt: true },
     });
     if (!existing) throw new NotFoundException('Randevu bulunamadı');
 
-    return this.prisma.appointment.update({
+    if (existing.status !== AppointmentStatus.SCHEDULED) {
+      throw new BadRequestException(
+        'Yalnızca planlanmış randevunun durumu değiştirilebilir.',
+      );
+    }
+    if (!ALLOWED_NEXT_STATUSES.includes(status)) {
+      throw new BadRequestException('Geçersiz randevu durumu geçişi.');
+    }
+    if (
+      PAST_ONLY_STATUSES.includes(status) &&
+      existing.scheduledAt.getTime() > Date.now()
+    ) {
+      throw new BadRequestException(
+        'Randevu saati geçmeden Geldi/Gelmedi işaretlenemez.',
+      );
+    }
+
+    const updated = await this.prisma.appointment.update({
       where: { id },
-      data: { status },
+      data: {
+        status,
+        // İptal edilen randevunun slotu serbest kalır
+        ...(status === AppointmentStatus.CANCELLED && {
+          availabilityId: null,
+        }),
+      },
       include: APPOINTMENT_INCLUDE,
     });
+
+    // Randevu artık planlı değilse bekleyen hatırlatmalar iptal edilir
+    try {
+      await this.reminders.cancelFor(id);
+    } catch (err) {
+      this.logger.warn(`Hatırlatma iptal edilemedi: ${String(err)}`);
+    }
+    return updated;
+  }
+
+  // Slot uzmana ait, engelsiz ve boş olmalı; randevu başlangıcını döner
+  private async resolveSlotStart(
+    availabilityId: string,
+    therapistId: string,
+  ): Promise<Date> {
+    const slot = await this.prisma.availability.findUnique({
+      where: { id: availabilityId },
+      select: {
+        expertProfileId: true,
+        date: true,
+        startTime: true,
+        isBlockedByAdmin: true,
+        appointment: { select: { id: true } },
+      },
+    });
+    if (!slot) throw new NotFoundException('Müsaitlik bulunamadı');
+    if (slot.expertProfileId !== therapistId) {
+      throw new ConflictException('Müsaitlik seçilen uzmana ait değil.');
+    }
+    if (slot.isBlockedByAdmin) {
+      throw new ConflictException('Bu müsaitlik engellenmiş.');
+    }
+    if (slot.appointment) {
+      throw new ConflictException(SLOT_CONFLICT_MESSAGE);
+    }
+    return slotStart(slot.date, slot.startTime);
+  }
+
+  private requireScheduledAt(value?: string): Date {
+    if (!value) {
+      throw new BadRequestException(
+        'scheduledAt veya availabilityId alanlarından biri zorunlu.',
+      );
+    }
+    return this.parseDate(value, 'scheduledAt');
   }
 
   private async assertNoConflict(

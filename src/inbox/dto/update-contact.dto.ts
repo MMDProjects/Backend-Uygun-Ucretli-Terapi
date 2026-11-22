@@ -1,14 +1,18 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
-import { ContactType } from '@prisma/client';
+import { ContactLifecycle, ContactType } from '@prisma/client';
 
 export class UpdateContactDto {
   @IsOptional()
@@ -34,7 +38,18 @@ export class UpdateContactDto {
   notes?: string;
 
   // Uzman/ekip işaretleri konuşma durumunu değiştirmez.
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined)
   @IsEnum(ContactType)
   contactType?: ContactType;
+
+  @ValidateIf((_, v) => v !== undefined)
+  @IsEnum(ContactLifecycle)
+  lifecycleStatus?: ContactLifecycle;
+
+  // Gönderilirse kişinin etiketleri tamamen bu listeyle değişir.
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  tagIds?: string[];
 }

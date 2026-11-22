@@ -244,6 +244,38 @@ export function buildPrismaMock() {
       groupBy: jest.fn(),
     },
 
+    // ── Operatör özellikleri (etiket, hazır cevap, prompt, okundu) ──────────
+    contactTag: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      count: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    cannedResponse: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    assistantPrompt: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      aggregate: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    conversationRead: {
+      findMany: jest.fn(),
+      upsert: jest.fn(),
+    },
+
     // ── Transactions ──────────────────────────────────────────────────────────
     $transaction: jest.fn().mockImplementation((args: unknown) => {
       if (Array.isArray(args)) return Promise.all(args);
@@ -251,6 +283,8 @@ export function buildPrismaMock() {
         return args({ ...buildPrismaMockShallow() });
       return Promise.resolve([]);
     }),
+    // Ham SQL sorguları varsayılan olarak boş satır döner.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     $connect: jest.fn().mockResolvedValue(undefined),
     $disconnect: jest.fn().mockResolvedValue(undefined),
   };

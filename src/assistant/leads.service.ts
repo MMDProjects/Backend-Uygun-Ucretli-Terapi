@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Channel, Contact, ServiceType } from '@prisma/client';
+import { Channel, Contact, Prisma, ServiceType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
@@ -43,7 +43,8 @@ export class LeadsService {
 
   async createFromTool(
     conversation: { id: string; channel: Channel },
-    contact: Pick<Contact, 'id' | 'phone'>,
+    contact: Pick<Contact, 'id' | 'phone'> &
+      Partial<Pick<Contact, 'fullName' | 'age'>>,
     args: LeadToolArgs,
   ): Promise<LeadToolResult> {
     const telefon = args.telefon?.trim() || null;
@@ -99,21 +100,30 @@ export class LeadsService {
       },
     });
 
+    // Kişi kartında boş olan alanlar doldurulur; personelin girdiği değer korunur.
+    const contactData: Prisma.ContactUpdateInput = {};
     if (
       conversation.channel === Channel.INSTAGRAM &&
       !contact.phone &&
       telefon
     ) {
+      contactData.phone = telefon;
+    }
+    const fullName = args.ad_soyad?.trim();
+    if (!contact.fullName && fullName) {
+      contactData.fullName = fullName;
+    }
+    if ((contact.age === null || contact.age === undefined) && age !== null) {
+      contactData.age = age;
+    }
+    if (Object.keys(contactData).length > 0) {
       try {
         await this.prisma.contact.update({
           where: { id: contact.id },
-          data: { phone: telefon },
+          data: contactData,
         });
       } catch (err) {
-        this.logger.error(
-          `Instagram telefonu kaydedilemedi (${contact.id})`,
-          err,
-        );
+        this.logger.error(`Kişi kartı güncellenemedi (${contact.id})`, err);
       }
     }
 

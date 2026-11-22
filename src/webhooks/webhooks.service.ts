@@ -59,6 +59,26 @@ const ECHO_MATCH_WINDOW_MS = 60000;
 const DEFAULT_CRISIS_LOCK_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+type WhatsAppMessage = NonNullable<
+  MetaWhatsAppChange['value']['messages']
+>[number];
+
+// Metin, şablon butonu ve etkileşimli seçimden okunabilir metni çıkarır.
+function readWhatsAppText(m: WhatsAppMessage): string | undefined {
+  switch (m.type) {
+    case 'text':
+      return m.text?.body;
+    case 'button':
+      return m.button?.text;
+    case 'interactive':
+      return (
+        m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title
+      );
+    default:
+      return undefined;
+  }
+}
+
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
@@ -96,7 +116,7 @@ export class WebhooksService {
       ];
       for (const [events, standby] of sources) {
         for (const event of events ?? []) {
-          if (!event.message?.is_echo) continue;
+          if (!event.message?.is_echo || event.message.is_deleted) continue;
           result.push({
             externalContactId: event.recipient.id,
             metaMessageId: event.message.mid,
@@ -115,10 +135,13 @@ export class WebhooksService {
     const result: NormalizedIncomingMessage[] = [];
     for (const change of changes) {
       const contactsByWaId = new Map(
-        (change.value.contacts ?? []).map((c) => [c.wa_id, c.profile.name]),
+        // Gerçek payload'da profile alanı her zaman gelmiyor.
+        (change.value.contacts ?? []).map((c) => [c.wa_id, c.profile?.name]),
       );
       for (const m of change.value.messages ?? []) {
-        const text = m.type === 'text' ? m.text?.body : undefined;
+        // Emoji tepkisi yeni bir mesaj değildir; asistan cevap vermesin.
+        if (m.type === 'reaction') continue;
+        const text = readWhatsAppText(m);
         result.push({
           channel: Channel.WHATSAPP,
           externalContactId: m.from,
@@ -140,7 +163,10 @@ export class WebhooksService {
     const result: NormalizedIncomingMessage[] = [];
     for (const event of events) {
       // is_echo kopyaları ayrı işlenir (bkz. extractInstagramEchoes).
-      if (!event.message || event.message.is_echo) continue;
+      // Geri alınan (unsend) mesaj yeni mesaj sayılmaz.
+      if (!event.message || event.message.is_echo || event.message.is_deleted) {
+        continue;
+      }
       const text = event.message.text;
       result.push({
         channel: Channel.INSTAGRAM,
