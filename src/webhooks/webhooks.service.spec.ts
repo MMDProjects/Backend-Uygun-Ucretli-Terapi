@@ -5,7 +5,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { AssistantSettingsService } from '../assistant/assistant-settings.service';
 import { InstagramProfileService } from './instagram-profile.service';
-import { MetaWebhookBody } from './dto/meta-webhook-payload.dto';
+import {
+  MetaWebhookBody,
+  MetaWhatsAppChange,
+} from './dto/meta-webhook-payload.dto';
 
 function buildPrismaMock() {
   return {
@@ -232,6 +235,204 @@ describe('WebhooksService', () => {
       };
 
       expect(service.extractMessages(body)).toHaveLength(0);
+    });
+
+    // Gerçek Meta payload varyantları: varsayılan alan biçimine güvenilmez.
+    describe('gerçek payload varyantları', () => {
+      type WaMessage = NonNullable<
+        MetaWhatsAppChange['value']['messages']
+      >[number];
+
+      function waBody(
+        message: WaMessage,
+        contacts?: MetaWhatsAppChange['value']['contacts'],
+      ): MetaWebhookBody {
+        return {
+          object: 'whatsapp_business_account',
+          entry: [
+            {
+              id: 'waba-1',
+              changes: [
+                {
+                  field: 'messages',
+                  value: {
+                    messaging_product: 'whatsapp',
+                    metadata: {
+                      phone_number_id: 'pn-1',
+                      display_phone_number: '905000000000',
+                    },
+                    ...(contacts ? { contacts } : {}),
+                    messages: [message],
+                  },
+                },
+              ],
+            },
+          ],
+        };
+      }
+
+      const waBase = {
+        id: 'wamid.x',
+        from: '905551112233',
+        timestamp: '1700000000',
+      };
+
+      it('contacts[].profile gelmezse çökmez, ad boş kalır', () => {
+        const result = service.extractMessages(
+          waBody({ ...waBase, type: 'text', text: { body: 'Merhaba' } }, [
+            { wa_id: '905551112233' },
+          ]),
+        );
+
+        expect(result).toHaveLength(1);
+        expect(result[0].contactName).toBeUndefined();
+        expect(result[0].content).toBe('Merhaba');
+      });
+
+      it('contacts dizisi hiç yoksa da mesaj işlenir', () => {
+        const result = service.extractMessages(
+          waBody({ ...waBase, type: 'text', text: { body: 'Selam' } }),
+        );
+
+        expect(result).toHaveLength(1);
+      });
+
+      it('WhatsApp emoji tepkisi (reaction) mesaj olarak işlenmez', () => {
+        const result = service.extractMessages(
+          waBody({ ...waBase, type: 'reaction' }),
+        );
+
+        expect(result).toHaveLength(0);
+      });
+
+      it('şablon hızlı cevap butonu (button) metin olarak okunur', () => {
+        const result = service.extractMessages(
+          waBody({
+            ...waBase,
+            type: 'button',
+            button: { text: 'DUR', payload: 'stop' },
+          }),
+        );
+
+        expect(result[0]).toMatchObject({ content: 'DUR', kind: 'text' });
+      });
+
+      it.each([
+        [
+          'button_reply',
+          { type: 'button_reply', button_reply: { id: 'b1', title: 'Evet' } },
+          'Evet',
+        ],
+        [
+          'list_reply',
+          { type: 'list_reply', list_reply: { id: 'l1', title: 'Pazartesi' } },
+          'Pazartesi',
+        ],
+      ])(
+        'etkileşimli %s seçimi metin olarak okunur',
+        (_, interactive, text) => {
+          const result = service.extractMessages(
+            waBody({ ...waBase, type: 'interactive', interactive }),
+          );
+
+          expect(result[0]).toMatchObject({ content: text, kind: 'text' });
+        },
+      );
+
+      it('başlığı olmayan etkileşimli mesaj desteklenmeyen sayılır', () => {
+        const result = service.extractMessages(
+          waBody({ ...waBase, type: 'interactive', interactive: {} }),
+        );
+
+        expect(result[0].kind).toBe('unsupported');
+      });
+
+      it('Instagram geri alınan mesaj (is_deleted) yeni mesaj sayılmaz', () => {
+        const body: MetaWebhookBody = {
+          object: 'instagram',
+          entry: [
+            {
+              id: 'entry-1',
+              messaging: [
+                {
+                  sender: { id: 'ig-user-1' },
+                  recipient: { id: 'ig-page-1' },
+                  timestamp: 1700000000000,
+                  message: { mid: 'mid.del', is_deleted: true },
+                },
+              ],
+              standby: [
+                {
+                  sender: { id: 'ig-user-1' },
+                  recipient: { id: 'ig-page-1' },
+                  timestamp: 1700000000000,
+                  message: { mid: 'mid.del2', is_deleted: true },
+                },
+              ],
+            },
+          ],
+        };
+
+        expect(service.extractMessages(body)).toHaveLength(0);
+        expect(service.extractInstagramEchoes(body)).toHaveLength(0);
+      });
+
+      it('metin içermeyen olaylar (okundu, tepki, postback) mesaj üretmez', () => {
+        const body = {
+          object: 'instagram',
+          entry: [
+            {
+              id: 'entry-1',
+              messaging: [
+                {
+                  sender: { id: 'ig-user-1' },
+                  recipient: { id: 'ig-page-1' },
+                  timestamp: 1700000000000,
+                  read: { mid: 'mid.1' },
+                },
+                {
+                  sender: { id: 'ig-user-1' },
+                  recipient: { id: 'ig-page-1' },
+                  timestamp: 1700000000000,
+                  reaction: { mid: 'mid.1', action: 'react', emoji: '❤' },
+                },
+                {
+                  sender: { id: 'ig-user-1' },
+                  recipient: { id: 'ig-page-1' },
+                  timestamp: 1700000000000,
+                  postback: { title: 'Fiyatlar', payload: 'PRICES' },
+                },
+              ],
+            },
+          ],
+        } as unknown as MetaWebhookBody;
+
+        expect(service.extractMessages(body)).toHaveLength(0);
+        expect(service.extractInstagramEchoes(body)).toHaveLength(0);
+      });
+
+      it('Instagram yorum webhook’u (changes) mesaj üretmez ve çökmez', () => {
+        const body = {
+          object: 'instagram',
+          entry: [
+            {
+              id: 'entry-1',
+              changes: [
+                {
+                  field: 'comments',
+                  value: {
+                    id: 'c1',
+                    text: 'Güzel paylaşım',
+                    from: { id: 'u1' },
+                  },
+                },
+              ],
+            },
+          ],
+        } as unknown as MetaWebhookBody;
+
+        expect(service.extractMessages(body)).toHaveLength(0);
+      });
     });
   });
 

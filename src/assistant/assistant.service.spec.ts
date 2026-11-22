@@ -908,6 +908,27 @@ describe('taslak (draftOnly) ve mod kuralları', () => {
     expect(deps.handoffService.handoff).not.toHaveBeenCalled();
   });
 
+  it('standby krizinde LIVE modda bile kriz mesajı gönderilmez, STANDBY taslağı olur', async () => {
+    const deps = buildDeps('LIVE');
+
+    await deps.service.handleCrisis('conv-1', { draftOnly: true });
+
+    expect(deps.metaSender.sendText).not.toHaveBeenCalled();
+    expect(deps.prisma.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        content: CRISIS_MESSAGE,
+        isDraft: true,
+        draftMeta: { mode: 'STANDBY', tools: [] },
+      }),
+    });
+    // Personel uyarısı standby'da da gider.
+    expect(deps.crisisAlert.alert).toHaveBeenCalledWith('conv-1', 'detected');
+    expect(deps.notifications.notifyAdmins).toHaveBeenCalledWith(
+      'DANGER_PANIC',
+      expect.any(String),
+    );
+  });
+
   it('OFF modunda handleCrisis mesaj yazmaz ama e-posta gönderir', async () => {
     const deps = buildDeps('OFF');
 

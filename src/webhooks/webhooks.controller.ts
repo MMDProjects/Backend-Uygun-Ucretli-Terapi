@@ -188,8 +188,16 @@ export class WebhooksController {
         draftOnly: item.standby === true,
       });
     }
-    return item.crisisNew
-      ? this.assistant.handleCrisis(item.conversationId)
-      : this.assistant.handleCrisis(item.conversationId, { repeat: true });
+    // Bekleme (standby) mesajında kriz cevabı da yalnız taslak olur.
+    const draft = item.standby ? { draftOnly: true } : undefined;
+    if (item.crisisNew) {
+      return draft
+        ? this.assistant.handleCrisis(item.conversationId, draft)
+        : this.assistant.handleCrisis(item.conversationId);
+    }
+    return this.assistant.handleCrisis(item.conversationId, {
+      repeat: true,
+      ...draft,
+    });
   }
 }

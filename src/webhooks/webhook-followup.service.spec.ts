@@ -5,6 +5,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { MetaSenderService } from './meta-sender.service';
+import { AssistantSettingsService } from '../assistant/assistant-settings.service';
 
 function buildPrismaMock() {
   return {
@@ -43,6 +44,7 @@ describe('WebhookFollowupService', () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
   let events: { emit: jest.Mock };
   let meta: { sendText: jest.Mock };
+  let settings: { getEffectiveMode: jest.Mock };
   let service: WebhookFollowupService;
 
   beforeEach(() => {
@@ -53,10 +55,12 @@ describe('WebhookFollowupService', () => {
         .fn<any, any>()
         .mockResolvedValue({ ok: true, messageId: 'wamid.confirm' }),
     };
+    settings = { getEffectiveMode: jest.fn().mockResolvedValue('LIVE') };
     service = new WebhookFollowupService(
       prisma as unknown as PrismaService,
       events as unknown as InboxEventsService,
       meta as unknown as MetaSenderService,
+      settings as unknown as AssistantSettingsService,
     );
   });
 
@@ -341,6 +345,35 @@ describe('WebhookFollowupService', () => {
 
       expect(optOut).toBe(true);
       expect(prisma.contact.update).toHaveBeenCalled();
+      expect(meta.sendText).not.toHaveBeenCalled();
+    });
+
+    it.each(['SHADOW', 'OFF'])(
+      '%s modunda DUR kaydedilir ama onay gönderilmez (numarayı başka sistem yönetiyor olabilir)',
+      async (mode) => {
+        settings.getEffectiveMode.mockResolvedValue(mode);
+
+        const optOut = await service.handleInboundMessage({
+          ...base,
+          text: 'DUR',
+        });
+
+        expect(optOut).toBe(true);
+        expect(prisma.contact.update).toHaveBeenCalled();
+        expect(meta.sendText).not.toHaveBeenCalled();
+        expect(prisma.message.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('mod okunamazsa onay gönderilmez', async () => {
+      settings.getEffectiveMode.mockRejectedValue(new Error('db'));
+
+      const optOut = await service.handleInboundMessage({
+        ...base,
+        text: 'DUR',
+      });
+
+      expect(optOut).toBe(true);
       expect(meta.sendText).not.toHaveBeenCalled();
     });
 

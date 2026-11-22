@@ -306,6 +306,32 @@ describe('WebhooksController', () => {
       expect(handleIncoming).not.toHaveBeenCalled();
     });
 
+    it.each([
+      [true, { draftOnly: true }],
+      [false, { repeat: true, draftOnly: true }],
+    ])(
+      'standby kriz mesajında (crisisNew=%s) handleCrisis draftOnly ile çağrılır',
+      async (crisisNew, expected) => {
+        const { service } = buildServiceMock(
+          {
+            conversationId: 'conv-1',
+            isNew: true,
+            crisis: true,
+            crisisNew,
+            kind: 'text',
+            standby: true,
+          },
+          [normalizedMessage],
+        );
+        const { assistant, handleCrisis } = buildAssistantMock();
+        const controller = new WebhooksController(service, config, assistant);
+
+        await controller.receive(buildValidRequest());
+
+        expect(handleCrisis).toHaveBeenCalledWith('conv-1', expected);
+      },
+    );
+
     it('Instagram echo’ları fire-and-forget işlenir, asistan çağrılmaz', async () => {
       const echo = {
         externalContactId: 'ig-user-1',

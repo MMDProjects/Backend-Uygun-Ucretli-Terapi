@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  AssistantMode,
   Channel,
   DeliveryStatus,
   Prisma,
@@ -10,6 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { InboxEventsService } from '../inbox-events/inbox-events.service';
 import { MetaSenderService } from './meta-sender.service';
+import { AssistantSettingsService } from '../assistant/assistant-settings.service';
 import { isOptOutMessage } from '../messaging/opt-out';
 import {
   ForwardStatus,
@@ -53,6 +55,7 @@ export class WebhookFollowupService {
     private readonly prisma: PrismaService,
     private readonly inboxEvents: InboxEventsService,
     private readonly metaSender: MetaSenderService,
+    private readonly settings: AssistantSettingsService,
   ) {}
 
   // WhatsApp value.statuses[] olaylarını işler.
@@ -186,7 +189,9 @@ export class WebhookFollowupService {
       this.logger.error('Gelen mesaj takip işlemi başarısız', err as Error);
     }
 
-    if (optOut && channel && !input.standby) {
+    // DUR kaydı her modda tutulur; onay mesajı yalnızca bizim sistem canlıyken
+    // gider. Kapalı ve gölge modda numarayı başka bir sistem yönetiyor olabilir.
+    if (optOut && channel && !input.standby && (await this.isLive())) {
       await this.sendOptOutConfirmation(
         input.conversationId,
         channel,
@@ -194,6 +199,16 @@ export class WebhookFollowupService {
       );
     }
     return optOut;
+  }
+
+  // Mod okunamazsa güvenli tarafta kalınır: canlı sayılmaz.
+  private async isLive(): Promise<boolean> {
+    try {
+      return (await this.settings.getEffectiveMode()) === AssistantMode.LIVE;
+    } catch (err) {
+      this.logger.error('Asistan modu okunamadı', err as Error);
+      return false;
+    }
   }
 
   // Meta durumu, kaydın yazılmasından önce gelebilir. Bir kez, gecikmeli denenir.

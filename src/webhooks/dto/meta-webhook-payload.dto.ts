@@ -20,13 +20,21 @@ export interface MetaWhatsAppChange {
   value: {
     messaging_product: 'whatsapp';
     metadata: { phone_number_id: string; display_phone_number: string };
-    contacts?: { profile: { name: string }; wa_id: string }[];
+    contacts?: { profile?: { name?: string }; wa_id: string }[];
     messages?: {
       id: string;
       from: string;
       timestamp: string;
       type: string;
       text?: { body: string };
+      // Şablondaki hızlı cevap butonu.
+      button?: { text?: string; payload?: string };
+      // Etkileşimli mesajda seçilen buton veya liste satırı.
+      interactive?: {
+        type?: string;
+        button_reply?: { id?: string; title?: string };
+        list_reply?: { id?: string; title?: string };
+      };
     }[];
     statuses?: MetaWhatsAppStatus[];
     // message_template_status_update olayının alanları.
@@ -46,6 +54,8 @@ export interface MetaInstagramMessagingEvent {
     mid: string;
     text?: string;
     is_echo?: boolean;
+    // Danışan mesajı geri aldı (unsend); yeni mesaj değildir.
+    is_deleted?: boolean;
   };
   // Danışanın okuma bildirimi; watermark okunan son mesajın zamanıdır (ms).
   read?: { mid?: string; watermark?: number };

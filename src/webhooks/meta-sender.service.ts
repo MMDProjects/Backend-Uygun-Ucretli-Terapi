@@ -108,7 +108,12 @@ export class MetaSenderService {
         );
         return { ok: false };
       }
-      url = `https://graph.instagram.com/${version}/${accountId}/messages`;
+      // Instagram Login token'ı graph.instagram.com, Facebook Login (sistem
+      // kullanıcısı) token'ı graph.facebook.com ister.
+      const host =
+        this.config.get<string>('INSTAGRAM_GRAPH_HOST') ||
+        'graph.instagram.com';
+      url = `https://${host}/${version}/${accountId}/messages`;
       body = {
         recipient: { id: recipientId },
         message: { text },

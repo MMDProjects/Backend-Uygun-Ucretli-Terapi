@@ -20,8 +20,12 @@ export class InstagramProfileService {
     if (!token) return null;
 
     const version = this.config.get<string>('META_GRAPH_VERSION') || 'v21.0';
+    // Instagram Login token'ı graph.instagram.com, Facebook Login (sistem
+    // kullanıcısı) token'ı graph.facebook.com ister.
+    const host =
+      this.config.get<string>('INSTAGRAM_GRAPH_HOST') || 'graph.instagram.com';
     const url =
-      `https://graph.instagram.com/${version}/${encodeURIComponent(igsid)}` +
+      `https://${host}/${version}/${encodeURIComponent(igsid)}` +
       `?fields=name,username&access_token=${encodeURIComponent(token)}`;
 
     try {

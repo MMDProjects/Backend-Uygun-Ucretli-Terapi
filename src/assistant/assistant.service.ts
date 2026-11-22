@@ -232,9 +232,11 @@ export class AssistantService {
     return Promise.resolve();
   }
 
+  // draftOnly: Instagram bekleme (standby) mesajı; kriz mesajı yalnız taslak
+  // olur, personel uyarısı yine gider.
   handleCrisis(
     conversationId: string,
-    opts?: { repeat?: boolean },
+    opts?: { repeat?: boolean; draftOnly?: boolean },
   ): Promise<void> {
     const pending = this.pendingTurns.get(conversationId);
     if (pending) {
@@ -242,7 +244,11 @@ export class AssistantService {
       this.pendingTurns.delete(conversationId);
     }
     return this.enqueue(conversationId, () =>
-      this.runCrisis(conversationId, opts?.repeat === true),
+      this.runCrisis(
+        conversationId,
+        opts?.repeat === true,
+        opts?.draftOnly === true,
+      ),
     );
   }
 
@@ -286,9 +292,10 @@ export class AssistantService {
   private async runCrisis(
     conversationId: string,
     repeat: boolean,
+    draftOnly: boolean,
   ): Promise<void> {
     if (!repeat) {
-      await this.sendCrisisMessage(conversationId);
+      await this.sendCrisisMessage(conversationId, draftOnly);
     }
     await this.crisisAlert.alert(
       conversationId,
@@ -301,7 +308,10 @@ export class AssistantService {
   }
 
   // Kriz mesajı aydınlatmadan önce gider; aydınlatma bu yolda gönderilmez.
-  private async sendCrisisMessage(conversationId: string): Promise<void> {
+  private async sendCrisisMessage(
+    conversationId: string,
+    draftOnly: boolean,
+  ): Promise<void> {
     const mode = await this.currentMode();
     if (mode === AssistantMode.OFF) {
       return;
@@ -316,8 +326,15 @@ export class AssistantService {
       );
       return;
     }
-    if (mode === AssistantMode.SHADOW) {
-      await this.saveDraft(conversation, CRISIS_MESSAGE, 'SHADOW', [], null);
+    // Konuşma başka bir uygulamadayken (standby) gönderilmez, taslak olur.
+    if (draftOnly || mode === AssistantMode.SHADOW) {
+      await this.saveDraft(
+        conversation,
+        CRISIS_MESSAGE,
+        draftOnly ? 'STANDBY' : 'SHADOW',
+        [],
+        null,
+      );
       return;
     }
     if (!(await this.deliver(conversation, CRISIS_MESSAGE))) {
